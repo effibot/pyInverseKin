@@ -2,7 +2,7 @@ import numpy as np
 import pygame
 import constants as c
 from pygame.math import Vector2 as v
-from pygame.surface import Surface
+from pygame.gfxdraw import pixel as draw_pixel
 
 
 class Robot(object):
@@ -160,27 +160,36 @@ class Robot(object):
         # return the points
         return X, Y
 
-    def render(self, screen: pygame.Surface):
+    def render(self, screen: pygame.Surface, ws: bool = False):
+        # draw workspace
+        if ws:
+            X, Y = self.generate_ws_curves(100)
+            X, Y = X + self.__center[0], Y + self.__center[1]
+            for i in range(len(X) - 1):
+                draw_pixel(screen, int(X[i]), int(Y[i]), c.GREEN)
+        # draw base
+        pygame.draw.rect(
+            screen, c.GREY, pygame.Rect(self.__center[0] - 10, self.__center[1] - 10, 20, 20)
+        )
         # draw links
         for i in range(1, len(self.__joints)):
             prev = self.__joints[i - 1]
-            cur = self.__joints[i]
-            pygame.draw.aaline(screen, c.BLACK, prev, cur)
-        # draw base
-        center = screen.get_rect().center
-        pygame.draw.rect(
-            screen, c.GREY, pygame.Rect(center[0] - 10, center[1] - 10, 20, 20)
-        )
-        # draw self.__joints
-        for point in self.__joints:
-            if point == self.__joints[0]:
-                # start joint
-                rad = 5
+            curr = self.__joints[i]
+            rad = 7
+            if i == 1:
+                # first joint
                 color = c.BLUE
             else:
                 # other joints
-                rad = 5
-                color = c.BLACK
-            pygame.draw.circle(
-                screen, color, (int(point[0]), int(point[1])), radius=rad
-            )
+                color = c.GREY
+            # draw link
+            L = c.L1 if i == 1 else c.L2
+            pygame.draw.rect(screen, c.BLACK, [prev[0], prev[1] - 5, L, 10])
+            # draw joint
+            if i == 1:
+                pygame.draw.circle(screen, c.GREY, curr, radius=rad + 2)
+            pygame.draw.circle(screen, color, prev, radius=rad)
+            if i == len(self.__joints) - 1:
+                # draw end effector
+                pygame.draw.circle(screen, c.GREY, curr, radius=rad + 2)
+                pygame.draw.circle(screen, c.GREEN, curr, radius=rad)

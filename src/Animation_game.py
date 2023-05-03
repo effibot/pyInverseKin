@@ -7,8 +7,7 @@ import constants as c
 
 # CONSTANTS
 running = True
-start = v(c.WIDTH // 2, c.HEIGHT // 2)
-target = v(start.x + c.L1 / 3 * 2 + c.L2, start.y + 50)
+target = c._to_zero(v(c.L1 / 3 * 2 + c.L2, 50))
 
 
 def draw_axis(robot, ws, ax=None, **plt_kwargs):
@@ -38,20 +37,51 @@ def draw_axis(robot, ws, ax=None, **plt_kwargs):
 
 def make_axis(ws, ax=None, **plt_kwargs):
     # define number of horizontal lines
-
-    for i, j in zip(
-        range(0, c.HEIGHT + 1, c.HEIGHT // ((c.HEIGHT) % 7)),
-        range(0, c.WIDTH + 1, c.WIDTH // ((c.WIDTH) % 6)),
-    ):
+    x_range = range(0, c.HEIGHT + 1, c.HEIGHT // ((c.HEIGHT) % 7))
+    y_range = range(0, c.WIDTH + 1, c.WIDTH // ((c.WIDTH) % 6))
+    for i, j in zip(x_range, y_range):
+        if i == c.HEIGHT // 2 or j == c.WIDTH // 2:
+            color = c.BLACK
+        else:
+            color = c.GREY
         # horizontal lines
-        pygame.draw.line(screen, c.BLACK, (0, i), (c.WIDTH, i))
+        pygame.draw.line(screen, color, (0, i), (c.WIDTH, i))
         # vertical lines
-        pygame.draw.line(screen, c.BLACK, (j, 0), (j, c.WIDTH))
-        ## add the principal axis
-    # draw the horizontal axis
+        pygame.draw.line(screen, color, (j, 0), (j, c.WIDTH))
+    # Add X-axis positive indicator
+    pygame.draw.polygon(
+        screen,
+        c.BLACK,
+        [
+            (c.WIDTH - 10, c.HEIGHT // 2 - 5),
+            (c.WIDTH - 10, c.HEIGHT // 2 + 5),
+            (c.WIDTH, c.HEIGHT // 2),
+        ],
+    )
+    # Add Y-axis positive indicator
+    pygame.draw.polygon(
+        screen,
+        c.BLACK,
+        [
+            (c.WIDTH // 2 - 5, 10),
+            (c.WIDTH // 2 + 5, 10),
+            (c.WIDTH // 2, 0),
+        ],
+    )
     # pygame.draw.line(screen, c.BLACK, (0, c.HEIGHT // 2), (c.WIDTH, c.HEIGHT // 2))
     # draw the vertical axis
     # pygame.draw.line(screen, c.BLACK, (c.WIDTH // 2, 0), (c.WIDTH // 2, c.HEIGHT))
+    # Add corners
+    pygame.draw.polygon(screen, c.GREY, [(c.WIDTH - 5, 0), (c.WIDTH, 0), (c.WIDTH, 5)])
+    pygame.draw.polygon(
+        screen,
+        c.GREY,
+        [(c.WIDTH - 5, c.HEIGHT), (c.WIDTH, c.HEIGHT), (c.WIDTH, c.HEIGHT - 5)],
+    )
+    pygame.draw.polygon(screen, c.GREY, [(0, 0), (5, 0), (0, 5)])
+    pygame.draw.polygon(
+        screen, c.GREY, [(0, c.HEIGHT), (5, c.HEIGHT), (0, c.HEIGHT - 5)]
+    )
 
 
 def render(robot, ws):
@@ -62,7 +92,7 @@ def render(robot, ws):
     # w = surf.get_c.WIDTH()
     # draw the robot
     make_axis(screen)
-    robot.render(screen)
+    robot.render(screen, True)
     # # draw target
     pygame.draw.circle(screen, c.BLACK, (int(target[0]), int(target[1])), 7.5)
     pygame.draw.circle(screen, c.RED, (int(target[0]), int(target[1])), 5)
