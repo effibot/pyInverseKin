@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pygame.math import Vector2 as v
 import constants as c
+from pygame import font
 
 # CONSTANTS
 running = True
 target = c._to_zero(v(c.L1 / 3 * 2 + c.L2, 50))
 
 
-def draw_axis(robot, ws, ax=None, **plt_kwargs):
+def draw_axis(robot, ws, ax=None):
     # get the figure and axes
     if ax is None:
         ax = plt.gca()
@@ -68,9 +69,15 @@ def make_axis(ws, ax=None, **plt_kwargs):
             (c.WIDTH // 2, 0),
         ],
     )
-    # pygame.draw.line(screen, c.BLACK, (0, c.HEIGHT // 2), (c.WIDTH, c.HEIGHT // 2))
-    # draw the vertical axis
-    # pygame.draw.line(screen, c.BLACK, (c.WIDTH // 2, 0), (c.WIDTH // 2, c.HEIGHT))
+    # Add Axis Lables
+    if pygame.font:
+        font = pygame.font.Font(None, 20)
+        # Add X label to the positive indicator
+        text = font.render("X", True, c.BLACK)
+        screen.blit(text, (c.WIDTH - 10, c.HEIGHT // 2 - 20))
+        # Add Y label to the positive indicator
+        text = font.render("Y", True, c.BLACK)
+        screen.blit(text, (c.WIDTH // 2 + 10, 0))
     # Add corners
     pygame.draw.polygon(screen, c.GREY, [(c.WIDTH - 5, 0), (c.WIDTH, 0), (c.WIDTH, 5)])
     pygame.draw.polygon(
@@ -85,13 +92,11 @@ def make_axis(ws, ax=None, **plt_kwargs):
 
 
 def render(robot, ws):
+    # reset the background
     screen.fill(c.WHITE)
-    # surf = draw_axis(robot, ws)
-    # screen.blit(surf, (0, 0))
-    # h = surf.get_c.HEIGHT()
-    # w = surf.get_c.WIDTH()
-    # draw the robot
+    # draw the axis
     make_axis(screen)
+    # draw the robot
     robot.render(screen, True)
     # # draw target
     pygame.draw.circle(screen, c.BLACK, (int(target[0]), int(target[1])), 7.5)
@@ -116,6 +121,9 @@ if __name__ == "__main__":
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
         render(arm, ws)
         clock.tick(60)
     pygame.quit()
