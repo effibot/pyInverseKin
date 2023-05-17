@@ -1,4 +1,5 @@
 from re import M
+from tkinter import E
 import numpy as np
 from pygame.math import Vector2 as v
 from pygame import Surface, draw, transform
@@ -20,7 +21,7 @@ NAME = "2 DoF Planar Robot"
 
 # Working Range (in radians)
 WORKING_RANGE = np.array([[-np.pi, np.pi], [-3 * np.pi / 4, 3 * np.pi / 4]])
-WORKING_VELOCITIES = np.pi/180*np.array([[-1, 1], [-1, 1]])
+WORKING_VELOCITIES = np.pi / 180 * np.array([[-1, 1], [-1, 1]])
 # Screen Size
 WIDTH, HEIGHT = 640, 480
 
@@ -37,6 +38,7 @@ def _to_zero(vector) -> v:
 ALPHA = 1e-3
 GAMMA = 1
 SIGMA = 1e-2
+EPSILON = 2e-1
 NUM_EPISODES = 1e3
 M = 5
 N = 4

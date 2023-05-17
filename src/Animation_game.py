@@ -103,6 +103,7 @@ def render(robot, ws):
     pygame.draw.circle(screen, c.RED, (int(target[0]), int(target[1])), 5)
     pygame.display.flip()
 
+
 from Environment import Environ
 
 if __name__ == "__main__":
@@ -119,10 +120,8 @@ if __name__ == "__main__":
     env = Environ(arm)
     n = 100
     ws = arm.generate_ws_curves(n)
-    gridq, griddq = env.build_tiles()
-    print(gridq.shape)
-    print(griddq.shape)
-    print(gridq)
+    # gridq, griddq = env.build_tiles()
+    env.getRBF()
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

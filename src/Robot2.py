@@ -33,6 +33,7 @@ class Robot(object):
         self.target = None  # target position
         # Generate the robot's link for PyGame Rendering
         self.__joints: list = self.update_joints()
+        self.__action = np.array([-1, 0, 1])
 
     def forward_kinematics(self, q1, q2):
         """Compute the forward kinematics of the robot.
@@ -203,8 +204,8 @@ class Robot(object):
     def getState(self):
         return self.__q
 
-    def getAction(self):
-        return self.__dq
+    def get_action(self):
+        pass
 
     def update_joints(self):
         """
