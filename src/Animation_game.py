@@ -103,6 +103,7 @@ def render(robot, ws):
     pygame.draw.circle(screen, c.RED, (int(target[0]), int(target[1])), 5)
     pygame.display.flip()
 
+from Environment import Environ
 
 if __name__ == "__main__":
     pygame.init()
@@ -115,8 +116,13 @@ if __name__ == "__main__":
     wr = c.WORKING_RANGE
     # arm = Robot("2 DoF Planar Robot", l1, l2, working_range)
     arm = Robot(c.NAME, c.L1, c.L2, wr, center)
+    env = Environ(arm)
     n = 100
     ws = arm.generate_ws_curves(n)
+    gridq, griddq = env.build_tiles()
+    print(gridq.shape)
+    print(griddq.shape)
+    print(gridq)
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

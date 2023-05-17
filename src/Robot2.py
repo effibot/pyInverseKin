@@ -5,33 +5,34 @@ from pygame.math import Vector2 as v
 from pygame.gfxdraw import pixel as draw_pixel
 
 
+# The class defines a robot with two links and joint angles, velocities, and end effector position, as
+# well as a working range and center for PyGame rendering.
 class Robot(object):
     def __init__(
         self,
-        name: str = "Robot",
-        l1: float = c.L1,
-        l2: float = c.L2,
-        working_range: np.ndarray = c.WORKING_RANGE,
-        center: np.ndarray = np.array([0, 0]),
+        name: str = "Robot",  # robot's name
+        l1: float = c.L1,  # length of the first link
+        l2: float = c.L2,  # length of the second link
+        working_range=c.WORKING_RANGE,  # working range of the robot
+        center: np.ndarray = np.array([0, 0]),  # center of the robot in the screen
     ):
         self.robot_name: str = name
         self.__l1: float = l1
         self.__l2: float = l2
-        self.__pose: np.ndarray = np.array([0, 0, 0])
-        self.__J: np.ndarray = np.zeros((2, 2))
+        self.__q: np.ndarray = np.zeros(2) + np.asarray(
+            [
+                -np.pi / 4,
+                np.pi / 2,
+            ]  # TODO> remove this, maybe set starting position from the environment
+        )  # joint angles
+        self.__dq: np.ndarray = np.zeros(2)  # joint velocities
+        self.__p: np.ndarray = np.zeros(2)  # End effector position
+        self.__J: np.ndarray = np.zeros((2, 2))  # Jacobian
         self.__working_range: np.ndarray = working_range
         self.__center: np.ndarray = center
-        self.__joints: list = list(
-            map(
-                v,
-                [
-                    (self.__center[0], self.__center[1]),
-                    (self.__center[0] + self.__l1, self.__center[1]),
-                    (self.__center[0] + self.__l1 + self.__l2, self.__center[1]),
-                ],
-            )
-        )
-        self.target = None
+        self.target = None  # target position
+        # Generate the robot's link for PyGame Rendering
+        self.__joints: list = self.update_joints()
 
     def forward_kinematics(self, q1, q2):
         """Compute the forward kinematics of the robot.
@@ -113,24 +114,6 @@ class Robot(object):
         self.__J = J
         return J
 
-    def __get_pose(self):
-        """Getter for the pose attribute."""
-        return self.__pose, self.__Joint_angles
-
-    def __get_jacobian(self):
-        """Getter for the Jacobian attribute."""
-        return self.__J
-
-    def __set_pose_ik(self, pose):
-        """Setter for the pose attribute."""
-        self.__Joint_angles = self.inverse_kinematics(pose[0], pose[1])
-        self.__pose = pose
-
-    def __set_pose_fwd(self, joint_angles):
-        """Setter for the pose attribute."""
-        self.__pose = self.forward_kinematics(joint_angles[0], joint_angles[1])
-        self.__Joint_angles = joint_angles
-
     def __is_inside_ws(self, pose):
         """Check if the given pose is inside the workspace of the robot."""
         x, y = pose
@@ -139,7 +122,15 @@ class Robot(object):
         )
 
     def generate_ws_curves(self, n):
-        """Generate the workspace curves of the robot brute-forcing the forward kinematics."""
+        """
+        This function generates workspace curves by computing the forward kinematics for a grid of
+        points within a defined range and filtering out points outside the workspace.
+
+        :param n: The number of points to use to draw the workspace curves. The higher the number, the
+        smoother the curve
+        :return: two arrays, X and Y, which contain the coordinates of the points that define the
+        workspace curves.
+        """
         # define how many points to use to draw the curves. The higher the number, the smoother the curve
         n_points = n
         # define the range of angles to use
@@ -161,6 +152,18 @@ class Robot(object):
         return X, Y
 
     def render(self, screen: pygame.Surface, ws: bool = False):
+        """
+        This function renders a robotic arm on a Pygame surface, with the option to also draw a
+        workspace.
+
+        :param screen: `screen` is a pygame.Surface object representing the display surface on which the
+        robot arm will be rendered
+        :type screen: pygame.Surface
+        :param ws: The "ws" parameter is a boolean flag that determines whether or not to draw the
+        workspace of the robotic arm. If it is set to True, the workspace will be drawn on the screen.
+        If it is set to False, the workspace will not be drawn, defaults to False
+        :type ws: bool (optional)
+        """
         # draw workspace
         if ws:
             X, Y = self.generate_ws_curves(100)
@@ -169,7 +172,9 @@ class Robot(object):
                 draw_pixel(screen, int(X[i]), int(Y[i]), c.GREEN)
         # draw base
         pygame.draw.rect(
-            screen, c.GREY, pygame.Rect(self.__center[0] - 10, self.__center[1] - 10, 20, 20)
+            screen,
+            c.GREY,
+            pygame.Rect(self.__center[0] - 10, self.__center[1] - 10, 20, 20),
         )
         # draw links
         for i in range(1, len(self.__joints)):
@@ -184,7 +189,8 @@ class Robot(object):
                 color = c.GREY
             # draw link
             L = c.L1 if i == 1 else c.L2
-            pygame.draw.rect(screen, c.BLACK, [prev[0], prev[1] - 5, L, 10])
+            # pygame.draw.rect(screen, c.BLACK, [prev[0], prev[1] - 5, L, 10])
+            pygame.draw.aaline(screen, c.BLACK, prev, curr, 1)
             # draw joint
             if i == 1:
                 pygame.draw.circle(screen, c.GREY, curr, radius=rad + 2)
@@ -193,3 +199,39 @@ class Robot(object):
                 # draw end effector
                 pygame.draw.circle(screen, c.GREY, curr, radius=rad + 2)
                 pygame.draw.circle(screen, c.GREEN, curr, radius=rad)
+
+    def getState(self):
+        return self.__q
+
+    def getAction(self):
+        return self.__dq
+
+    def update_joints(self):
+        """
+        The function updates the positions of the joints in a robotic arm based on the current joint
+        angles. The positions of the joints are calculated using the forward kinematics equations,
+        with specific offsets to account for the position of the base of the arm to get a correct rendering
+        :return: a list of three tuples, which represent the positions of the three joints of a robotic
+        arm. The positions are calculated based on the current values of the arm's joint angles and
+        lengths.
+        """
+        return list(
+            map(
+                v,
+                [
+                    (self.__center[0], self.__center[1]),
+                    (
+                        self.__center[0] + self.__l1 * np.cos(self.__q[0]),
+                        self.__center[1] - self.__l1 * np.sin(self.__q[0]),
+                    ),
+                    (
+                        self.__center[0]
+                        + self.__l1 * np.cos(self.__q[0])
+                        + self.__l2 * np.cos(self.__q[0] + self.__q[1]),
+                        self.__center[1]
+                        - self.__l1 * np.sin(self.__q[0])
+                        - self.__l2 * np.sin(self.__q[0] + self.__q[1]),
+                    ),
+                ],
+            )
+        )
