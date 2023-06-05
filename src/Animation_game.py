@@ -11,31 +11,6 @@ running = True
 target = c._to_zero(v(c.L1 / 3 * 2 + c.L2, 50))
 
 
-def draw_axis(robot, ws, ax=None):
-    # get the figure and axes
-    if ax is None:
-        ax = plt.gca()
-    # set general plot properties
-    ax.set_title(robot.robot_name)
-    ax.grid(True)
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_xlim(-c.WIDTH * 0.75, c.WIDTH * 0.75)
-    ax.set_ylim(-c.HEIGHT * 0.75, c.HEIGHT * 0.75)
-    # draw axis
-    ax.hlines(0, -c.WIDTH, c.WIDTH, color="k", linewidth=0.1)
-    ax.vlines(0, -c.HEIGHT, c.HEIGHT, color="k", linewidth=0.1)
-    # plot the workspace
-    ax.scatter(ws[0], ws[1], s=0.1, c="g", alpha=0.5)
-    # Make the plot
-    canvas = plt.get_current_fig_manager().canvas
-    canvas.draw()
-    buffer = canvas.buffer_rgba()  # type: ignore
-    surf = pygame.image.frombuffer(buffer, canvas.get_width_height(), "RGBA")
-    plt.clf()
-    return surf
-
-
 def make_axis(ws, ax=None, **plt_kwargs):
     # define number of horizontal lines
     x_range = range(0, c.HEIGHT + 1, c.HEIGHT // ((c.HEIGHT) % 7))
@@ -116,12 +91,12 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     wr = c.WORKING_RANGE
     # arm = Robot("2 DoF Planar Robot", l1, l2, working_range)
-    arm = Robot(c.NAME, c.L1, c.L2, wr, center)
+    arm = Robot(c.NAME, c.L1, c.L2, working_range=wr, center=center)
     env = Environ(arm)
     n = 100
     ws = arm.generate_ws_curves(n)
-    # gridq, griddq = env.build_tiles()
-    env.getRBF()
+    env.get_info()
+    print(env.get_indexes(arm.get_state(), arm.get_action()))
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -130,5 +105,6 @@ if __name__ == "__main__":
                 if event.key == pygame.K_ESCAPE:
                     running = False
         render(arm, ws)
+        arm.set_joint_angles(arm.get_q() + [0.01, 0.01])
         clock.tick(60)
     pygame.quit()

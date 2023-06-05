@@ -1,6 +1,8 @@
+from math import tau
 from operator import index
 import constants as c
 import numpy as np
+from tiles3 import IHT, tiles
 
 
 class Environ(object):
@@ -20,11 +22,21 @@ class Environ(object):
         self.__nCells = (self.__M**2) ** self.__A  # number of cells in the grid
         self.__d = self.__A * self.__N * self.__nCells  # number of weights
         self.__w = np.zeros(self.__d)  # weights
-        (self.__lbq, self.__ubq), (
-            self.__lbdq,
-            self.__ubdq,
-        ) = c.WORKING_VELOCITIES  # lower and upper bounds for q and dq
-        pass
+        self.__q1b, self.__q2b = c.WORKING_RANGE  # lower and upper bounds for q
+        self.__dq1b, self.__dq2b = c.WORKING_VELOCITIES  # lower and upper bounds for dq
+        self.__q0 = np.array([0, 0])  # initial state
+        self.iht = IHT(self.__d)  # index hash table
+
+    def get_info(self):
+        print("Number of cells: ", self.__nCells)
+        print("Number of weights: ", self.__d)
+        print("Number of episodes: ", self.__num_episodes)
+        print("Number of tiles per dimension: ", self.__M)
+        print("Number of tiles to create: ", self.__N)
+        print("Number of actions: ", self.__A)
+        print("Bounds for q: ", self.__q1b, self.__q2b)
+        print("Bounds for dq: ", self.__dq1b, self.__dq2b)
+        print("Initial state: ", self.__q0)
 
     def build_tiles(self):
         """
@@ -70,10 +82,10 @@ class Environ(object):
         action = self.agent.get_action()
         # loop over the actions and the number of cells to fill the output
         for n in range(0, self.__N):
-            for m1 in range(0, self.__M):
-                for m2 in range(0, self.__M):
+            for M1 in range(0, self.__M):
+                for M2 in range(0, self.__M):
                     index = np.unravel_index(
-                        indices=(m2, m1, n, action),
+                        indices=(M2, M1, n, action),
                         shape=(self.__M, self.__M, self.__N, self.__A),
                         order="F",
                     )
@@ -82,7 +94,7 @@ class Environ(object):
                         -1
                         / self.__sigma**2
                         * np.linalg.norm(
-                            self.agent.get_state() - [gridq[n, m1], griddq[n, m2]]
+                            self.agent.get_state() - [gridq[n, M1], griddq[n, M2]]
                         )
                         ** 2
                     )
@@ -127,12 +139,149 @@ class Environ(object):
     def epsGreedy(self):
         """
         Returns the action according to the epsilon greedy policy.
+        The actions are chosen according to the weights of the RBF and represents
+        the torque applied to the system, tau1 and tau2.
         """
         if np.random.rand() < self.__epsilon:
-            return np.random.randint(0, self.__A)
+            # return a random action with probability epsilon
+            return [np.random.randint(0, self.__A),
+                    np.random.randint(0, self.__A)]
         else:
-            q = np.zeros((self.__A, 1))
+            tau1 = np.zeros((self.__A, 1))
+            tau2 = np.zeros((self.__A, 1))
             for a in range(0, self.__A):
-                q[a] = self.__w.T @ self.getRBF()
-            a = np.unravel_index(np.argmax(q), q.shape)
-            return a
+                tau1[a] = self.__w.T @ self.getRBF()
+                tau2[a] = self.__w.T @ self.getRBF()
+            a1 = np.unravel_index(np.argmax(tau1), tau1.shape)
+            a2 = np.unravel_index(np.argmax(tau2), tau2.shape)
+            return [a1, a2]
+
+    def dynamics(self):
+        """
+        Returns the dynamics of the system integrated over a time step.
+        x1 = q1
+        x2 = q2
+        x3 = dq1
+        x4 = dq2
+        dx3 = ddq1
+        dx4 = ddq2
+        """
+        pass
+
+    def evaluate_dynamics(self, x1, x2, x3, x4, tau1, tau2):
+        dx3 = (
+            self.agent.__L2
+            * (
+                2
+                * self.agent.__L1
+                * self.agent.__L2
+                * self.agent.__M2
+                * x3
+                * x4**3
+                * np.sin(x2)
+                - self.agent.__L1
+                * c.g
+                * (self.agent.__M1 + self.agent.__M2)
+                * np.cos(x1)
+                - self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
+                + tau1
+            )
+            + (self.agent.__L1 * np.cos(x2) + self.agent.__L2)
+            * (
+                self.agent.__L1
+                * self.agent.__L2
+                * self.agent.__M2
+                * x3**2
+                * np.sin(x2)
+                + self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
+                - tau2
+            )
+        ) / (
+            self.agent.__L1**2
+            * self.agent.__L2
+            * (self.agent.__M1 + self.agent.__M2 * np.sin(x2) ** 2)
+        )
+
+        dx4 = (
+            -self.agent.__L2
+            * self.agent.__M2
+            * (self.agent.__L1 * np.cos(x2) + self.agent.__L2)
+            * (
+                2
+                * self.agent.__L1
+                * self.agent.__L2
+                * self.agent.__M2
+                * x3
+                * x4**3
+                * np.sin(x2)
+                - self.agent.__L1
+                * c.g
+                * (self.agent.__M1 + self.agent.__M2)
+                * np.cos(x1)
+                - self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
+                + tau1
+            )
+            - (
+                self.agent.__L1
+                * self.agent.__L2
+                * self.agent.__M2
+                * x3**2
+                * np.sin(x2)
+                + self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
+                - tau2
+            )
+            * (
+                self.agent.__L1**2 * self.agent.__M1
+                + self.agent.__L1**2 * self.agent.__M2
+                + 2 * self.agent.__L1 * self.agent.__L2 * self.agent.__M2 * np.cos(x2)
+                + self.agent.__L2**2 * self.agent.__M2
+            )
+        ) / (
+            self.agent.__L1**2
+            * self.agent.__L2**2
+            * self.agent.__M2
+            * (self.agent.__M1 + self.agent.__M2 * np.sin(x2) ** 2)
+        )
+        return np.array([dx3, dx4])
+
+    def simulate(self, x0, u, dt):
+        """
+        Simulates the system for a time step dt.
+        """
+        x = np.zeros((4, 1))
+        x[0] = x0[0]
+        x[1] = x0[1]
+        x[2] = x0[2]
+        x[3] = x0[3]
+        dx = np.zeros((4, 1))
+        dx[0] = x0[2]
+        dx[1] = x0[3]
+        next_state = self.evaluate_dynamics(x[0], x[1], x[2], x[3], u[0], u[1])
+        dx[2] = next_state[0]
+        dx[3] = next_state[1]
+        x = x + dx * dt
+        return x
+
+    def get_indexes(self, state, action):
+        """
+        Returns the tiles of the current state.
+        """
+
+        [q1, q2], [dq1, dq2] = state
+
+        scaleFactor_q1 = self.__M / (self.__q1b[1] - self.__q1b[0])
+        scaleFactor_q2 = self.__M / (self.__q2b[1] - self.__q2b[0])
+        scaleFactor_dq1 = self.__M / (self.__dq1b[1] - self.__dq1b[0])
+        scaleFactor_dq2 = self.__M / (self.__dq2b[1] - self.__dq2b[0])
+
+        return tiles(
+            self.iht,
+            self.__M,
+            [
+                scaleFactor_q1 * q1,
+                scaleFactor_dq1 * dq1,
+                scaleFactor_q2 * q2,
+                scaleFactor_dq2 * dq2,
+            ],
+            action,
+        )

@@ -16,6 +16,13 @@ WHITE = 255, 255, 255
 L1 = 80
 L2 = 70
 
+# Link Masses
+M1 = 1
+M2 = 1
+
+# Gravity
+g = 9.81
+
 # Robot Name
 NAME = "2 DoF Planar Robot"
 
@@ -40,6 +47,17 @@ GAMMA = 1
 SIGMA = 1e-2
 EPSILON = 2e-1
 NUM_EPISODES = 1e3
-M = 5
+M = 10
 N = 4
 A = 3
+
+init_cond = [
+    np.asarray(
+        [
+            -np.pi / 4,
+            np.pi / 2,
+        ]
+    ),
+    np.asarray([0, 0]),
+    np.asarray([0, 0]),
+]
