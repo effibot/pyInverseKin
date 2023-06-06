@@ -29,10 +29,23 @@ class Robot(object):
         self.__J: np.ndarray = np.zeros((2, 2))  # Jacobian
         self.__working_range: np.ndarray = working_range
         self.__center: np.ndarray = center
-        self.target = None  # target position
+        self.target: np.ndarray = np.zeros((2, 2))  # target position
         # Generate the robot's link for PyGame Rendering
         self.__joints: list = self.update_joints()
-        self.__action = np.array([-1, 0, 1])
+        self.__actions = np.array(
+            [
+                [-1, -1],
+                [-1, 0],
+                [-1, 1],
+                [0, -1],
+                [0, 0],
+                [0, 1],
+                [1, -1],
+                [1, 0],
+                [1, 1],
+            ]
+        )  # action to be taken
+        self.__distance_history = np.zeros((c.NUM_EPISODES, 1))
 
     def forward_kinematics(self, q1, q2):
         """Compute the forward kinematics of the robot.
@@ -47,6 +60,10 @@ class Robot(object):
         x = self.__L1 * np.cos(q1) + self.__L2 * np.cos(q1 + q2)
         y = self.__L1 * np.sin(q1) + self.__L2 * np.sin(q1 + q2)
         return np.asarray((x, y))
+
+    def compute_fwd_kin(self):
+        """Compute the forward kinematics of the robot."""
+        return self.forward_kinematics(self.__q[0], self.__q[1])
 
     def inverse_kinematics(self, x, y, elbow_up=True):
         """Compute the inverse kinematics of the robot.
@@ -114,7 +131,7 @@ class Robot(object):
         self.__J = J
         return J
 
-    def __is_inside_ws(self, pose):
+    def _is_inside_ws(self, pose):
         """Check if the given pose is inside the workspace of the robot."""
         x, y = pose
         return ((x**2 + y**2) < (self.__L1 + self.__L2) ** 2) & (
@@ -145,7 +162,7 @@ class Robot(object):
         # compute the forward kinematics for each point in the grid
         X, Y = self.forward_kinematics(grid[0], grid[1])
         # filter out the points that are outside the workspace
-        X, Y = X[self.__is_inside_ws((X, Y))], Y[self.__is_inside_ws((X, Y))]
+        X, Y = X[self._is_inside_ws((X, Y))], Y[self._is_inside_ws((X, Y))]
         # filter out duplicate of pairs of points
         X, Y = np.unique([X, Y], axis=1)
         # return the points
@@ -200,17 +217,20 @@ class Robot(object):
                 pygame.draw.circle(screen, c.GREY, curr, radius=rad + 2)
                 pygame.draw.circle(screen, c.GREEN, curr, radius=rad)
 
+    def get_p(self):
+        return self.__p
+
     def get_q(self):
         return self.__q
 
     def get_dq(self):
         return self.__dq
 
-    def get_action(self):
-        return [1, 0]
+    def get_action(self, index):
+        return self.__actions[index]
 
     def get_state(self):
-        return self.__q, self.__dq
+        return [self.__q[0], self.__dq[0], self.__q[1], self.__dq[1]]
 
     def update_joints(self):
         """
@@ -264,3 +284,124 @@ class Robot(object):
         self.__dq = np.array([0, 0])
         # update joint positions
         self.update_joints()
+
+    def evaluate_dynamics(self, x1, x2, x3, x4, tau1, tau2):
+        """
+        This function evaluates the dynamics of the system given its state and applied
+        torques.
+
+        :param x1: The angle of the first link of the double pendulum with respect to the vertical
+        direction
+        :param x2: The parameter x2 represents the angle of the second link of a double pendulum system
+        with respect to the vertical axis
+        :param x3: The angular velocity of the second link of a double pendulum system
+        :param x4: x4 is a state variable representing the angular velocity of the second link of a
+        double pendulum system
+        :param tau1: tau1 is the torque applied to the first joint of a double pendulum system
+        :param tau2: tau2 is the torque applied to the second joint of a two-link pendulum system
+        :return: a numpy array with two elements, dx3 and dx4, which are the calculated values for the
+        derivatives of x3 and x4 based on the given inputs and the dynamics equations.
+        """
+        dx3 = (
+            self.__L2
+            * (
+                2 * self.__L1 * self.__L2 * self.__M2 * x3 * x4**3 * np.sin(x2)
+                - self.__L1 * c.g * (self.__M1 + self.__M2) * np.cos(x1)
+                - self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
+                + tau1
+            )
+            + (self.__L1 * np.cos(x2) + self.__L2)
+            * (
+                self.__L1 * self.__L2 * self.__M2 * x3**2 * np.sin(x2)
+                + self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
+                - tau2
+            )
+        ) / (self.__L1**2 * self.__L2 * (self.__M1 + self.__M2 * np.sin(x2) ** 2))
+
+        dx4 = (
+            -self.__L2
+            * self.__M2
+            * (self.__L1 * np.cos(x2) + self.__L2)
+            * (
+                2 * self.__L1 * self.__L2 * self.__M2 * x3 * x4**3 * np.sin(x2)
+                - self.__L1 * c.g * (self.__M1 + self.__M2) * np.cos(x1)
+                - self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
+                + tau1
+            )
+            - (
+                self.__L1 * self.__L2 * self.__M2 * x3**2 * np.sin(x2)
+                + self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
+                - tau2
+            )
+            * (
+                self.__L1**2 * self.__M1
+                + self.__L1**2 * self.__M2
+                + 2 * self.__L1 * self.__L2 * self.__M2 * np.cos(x2)
+                + self.__L2**2 * self.__M2
+            )
+        ) / (
+            self.__L1**2
+            * self.__L2**2
+            * self.__M2
+            * (self.__M1 + self.__M2 * np.sin(x2) ** 2)
+        )
+        return np.array([dx3, dx4])
+
+    def simulate(self, x0, u, dt):
+        """
+        Simulates the system for a time step dt.
+        """
+        x = np.zeros((4, 1))
+        x[0] = x0[0]  # q1
+        x[1] = x0[1]  # q2
+        x[2] = x0[2]  # dq1
+        x[3] = x0[3]  # dq2
+        dx = np.zeros((4, 1))
+        dx[0] = x0[2]  # tau1
+        dx[1] = x0[3]  # tau2
+        next_state = self.evaluate_dynamics(x[0], x[1], x[2], x[3], u[0], u[1])
+        dx[2] = next_state[0]
+        dx[3] = next_state[1]
+        x = x + dx * dt
+        return x
+
+    def get_reward(self, episode):
+        """
+        Returns the reward for the current state.
+        """
+        # calculate the distance between the end effector and the target
+
+        if self._is_inside_ws(self.__p):
+            covered_distance = np.linalg.norm(self.__p - self.target)
+            if covered_distance <= c.EPSILON:
+                return 1
+            elif covered_distance >= self.__distance_history[episode - 1]:
+                self.__distance_history[episode] = covered_distance
+                return -1
+        return -100
+
+    def get_next_state(self, state, action):
+        """
+        This function calculates the next state of the robotic arm based on the current state and
+        the action taken. The next state is calculated using the forward kinematics equations, with
+        the addition of the action taken to the current joint angles.
+
+        :param action: The action taken by the  The action is a list of two values, which
+        represent the increments to be added to the current joint angles.
+        :type action: list
+        :return: a tuple containing the next state of the robotic arm, which is calculated using the
+        forward kinematics equations, and the reward obtained from the action taken.
+        """
+        # assign the torque values to variables
+        tau1, tau2 = action
+        # from the current state, calculate the next state
+        next_state = self.simulate(x0=state, u=[tau1, tau2], dt=c.TIME_STEP)
+        # update the joint angles
+        self.__q1 = next_state[0]
+        self.__q2 = next_state[1]
+        # update the joint velocities
+        self.__dq1 = next_state[2]
+        self.__dq2 = next_state[3]
+        # compute the forward kinematics to get the position
+        self.__p = self.compute_fwd_kin()
+        return next_state

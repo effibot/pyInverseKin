@@ -96,15 +96,17 @@ if __name__ == "__main__":
     n = 100
     ws = arm.generate_ws_curves(n)
     env.get_info()
-    print(env.get_indexes(arm.get_state(), arm.get_action()))
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sys.exit()
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
-        render(arm, ws)
-        arm.set_joint_angles(arm.get_q() + [0.01, 0.01])
-        clock.tick(60)
-    pygame.quit()
+    print(env.get_indexes(arm.get_state()))
+    # while running:
+    #    for event in pygame.event.get():
+    #        if event.type == pygame.QUIT:
+    #            sys.exit()
+    #        elif event.type == pygame.KEYDOWN:
+    #            if event.key == pygame.K_ESCAPE:
+    #                running = False
+    #    render(arm, ws)
+    # arm.set_joint_angles(arm.get_q() + [0.01, 0.01])
+    env.SARSA()
+
+    #    clock.tick(60)
+    # pygame.quit()

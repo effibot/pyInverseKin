@@ -2,7 +2,7 @@ from math import tau
 from operator import index
 import constants as c
 import numpy as np
-from tiles3 import IHT, tiles
+from tiles3 import IHT, tileswrap
 
 
 class Environ(object):
@@ -10,133 +10,54 @@ class Environ(object):
         self.__q = None
         self.__dq = None
         self.__reward = None
-        self.__M = c.M  # number of tiles per dimension
-        self.__N = c.N  # number of tiles to create
-        self.__A = c.A  # number of actions
+        self.__num_features = c.NUM_FEATURES
+        self.__num_tilings = c.NUM_TILINGS
+        self.__num_actions = c.NUM_ACTIONS
         self.agent = agent
         self.__alpha: float = c.ALPHA
         self.__gamma: float = c.GAMMA
         self.__sigma: float = c.SIGMA
         self.__epsilon: float = c.EPSILON
         self.__num_episodes = c.NUM_EPISODES
-        self.__nCells = (self.__M**2) ** self.__A  # number of cells in the grid
-        self.__d = self.__A * self.__N * self.__nCells  # number of weights
-        self.__w = np.zeros(self.__d)  # weights
+        self.__features = np.zeros((c.NUM_FEATURES, 1))  # features vector
+        self.__w = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))  # weights matrix
         self.__q1b, self.__q2b = c.WORKING_RANGE  # lower and upper bounds for q
         self.__dq1b, self.__dq2b = c.WORKING_VELOCITIES  # lower and upper bounds for dq
-        self.__q0 = np.array([0, 0])  # initial state
-        self.iht = IHT(self.__d)  # index hash table
+        self.__widths = np.array(
+            [
+                self.__q1b[1] - self.__q1b[0],
+                self.__dq1b[1] - self.__dq1b[0],
+                self.__q2b[1] - self.__q2b[0],
+                self.__dq2b[1] - self.__dq2b[0],
+            ]
+        )  # widths of the working range
+        self.iht = IHT(c.NUM_FEATURES)  # index hash table
+        self.__reward_history = np.zeros((self.__num_episodes, 1))
 
     def get_info(self):
-        print("Number of cells: ", self.__nCells)
-        print("Number of weights: ", self.__d)
-        print("Number of episodes: ", self.__num_episodes)
-        print("Number of tiles per dimension: ", self.__M)
-        print("Number of tiles to create: ", self.__N)
-        print("Number of actions: ", self.__A)
-        print("Bounds for q: ", self.__q1b, self.__q2b)
-        print("Bounds for dq: ", self.__dq1b, self.__dq2b)
-        print("Initial state: ", self.__q0)
+        print(
+            f"Number of features: {self.__num_features}\n"
+            + f"Number of actions: {self.__num_actions}\n"
+            + f"Number of weights (totals): {np.cumprod(self.__w.shape)[-1]}\n"
+            f"Number of episodes: {self.__num_episodes}\n"
+            + f"Number of tiles per dimension: {self.__num_tilings}\n"
+            + f"Bounds for q: {self.__q1b, self.__q2b}\n"
+            + f"Bounds for dq: {self.__dq1b, self.__dq2b}"
+        )
 
-    def build_tiles(self):
+    def get_features(self, state):
         """
-        Builds the tiles for the grid.
+        Returns the features vector for the current state.
         """
-        offset = np.asarray(
-            [1, 3]
-        )  # offset for the grid according to the rule of the first odds numbers
-        offset = offset / np.max(offset)  # normalize the offset
+        # get the indices of the active tiles
+        active_tiles = self.get_indexes(state)
+        # reset the features vector
+        self.__features[:] = 0
+        # set the active features to 1
+        self.__features[active_tiles] = 1
+        return self.__features
 
-        # define the increment for the grid
-        dq = (self.__ubq - self.__lbq) / self.__M
-        q_span = [self.__lbq - q for q in np.arange(self.__lbq, self.__ubq, dq)]
-        print(dq)
-
-        ddq = (self.__ubdq - self.__lbdq) / self.__M
-        dq_span = [self.__lbdq - dq for dq in np.arange(self.__lbdq, self.__ubdq, ddq)]
-
-        # build the grid
-        gridq = np.zeros((self.__N, len(q_span)))
-        griddq = np.zeros((self.__N, len(dq_span)))
-
-        # fill the first row of the grid
-        gridq[0, :] = q_span
-        griddq[0, :] = dq_span
-
-        # fill the rest of the grid
-        for i in range(1, self.__N):
-            gridq[i, :] = dq_span + offset[0] * dq / self.__N * (i - 1)
-            griddq[i, :] = dq_span + offset[1] * ddq / self.__N * (i - 1)
-
-        return gridq, griddq
-
-    def getRBF(self):
-        """
-        Returns the radial basis function approximation of a point in the plane.
-        """
-
-        # Define the output of the RBF
-        phi = np.zeros((self.__d, 1))
-        gridq, griddq = self.build_tiles()
-        # get the action from the agent
-        action = self.agent.get_action()
-        # loop over the actions and the number of cells to fill the output
-        for n in range(0, self.__N):
-            for M1 in range(0, self.__M):
-                for M2 in range(0, self.__M):
-                    index = np.unravel_index(
-                        indices=(M2, M1, n, action),
-                        shape=(self.__M, self.__M, self.__N, self.__A),
-                        order="F",
-                    )
-                    print(index)
-                    phi[index] = np.exp(
-                        -1
-                        / self.__sigma**2
-                        * np.linalg.norm(
-                            self.agent.get_state() - [gridq[n, M1], griddq[n, M2]]
-                        )
-                        ** 2
-                    )
-
-        return phi
-
-    def getFeatures(self):
-        """
-        Returns the features of the current state.
-        """
-        x = np.zeros((self.__d, 1))
-        gridq, griddq = self.build_tiles()
-        for n in range(self.__N):
-            # get chunk of the grid
-            q = gridq[n, :]
-            dq = griddq[n, :]
-            # get the indexes of the closest values that fall in the grid
-            q_index = np.where(
-                (
-                    self.agent.get_state()[0] >= q[0:-2]
-                    and self.agent.get_state()[0] < q[1:-1]
-                )
-                == True
-            )[0][0]
-            dq_index = np.where(
-                (
-                    self.agent.get_state()[1] >= dq[0:-2]
-                    and self.agent.get_state()[1] < dq[1:-1]
-                )
-                == True
-            )[0][0]
-            # get the index of the action
-            ind = np.unravel_index(
-                shape=[self.__M, self.__M, self.__N, self.__A],
-                indices=(q_index, dq_index, n, self.agent.get_action()),
-                order="F",
-            )
-            # fill the features
-            x[ind] = 1
-        return x
-
-    def epsGreedy(self):
+    def epsGreedy(self, state):
         """
         Returns the action according to the epsilon greedy policy.
         The actions are chosen according to the weights of the RBF and represents
@@ -144,17 +65,14 @@ class Environ(object):
         """
         if np.random.rand() < self.__epsilon:
             # return a random action with probability epsilon
-            return [np.random.randint(0, self.__A),
-                    np.random.randint(0, self.__A)]
+            a_i = np.random.randint(0, self.__num_actions)
         else:
-            tau1 = np.zeros((self.__A, 1))
-            tau2 = np.zeros((self.__A, 1))
-            for a in range(0, self.__A):
-                tau1[a] = self.__w.T @ self.getRBF()
-                tau2[a] = self.__w.T @ self.getRBF()
-            a1 = np.unravel_index(np.argmax(tau1), tau1.shape)
-            a2 = np.unravel_index(np.argmax(tau2), tau2.shape)
-            return [a1, a2]
+            # approximate the Q function with the weights
+            q_a = self.__w @ self.get_features(state)
+            # return the action with the highest Q value
+            a_i = np.argmax(q_a)
+
+        return self.agent.get_action(a_i)
 
     def dynamics(self):
         """
@@ -168,120 +86,73 @@ class Environ(object):
         """
         pass
 
-    def evaluate_dynamics(self, x1, x2, x3, x4, tau1, tau2):
-        dx3 = (
-            self.agent.__L2
-            * (
-                2
-                * self.agent.__L1
-                * self.agent.__L2
-                * self.agent.__M2
-                * x3
-                * x4**3
-                * np.sin(x2)
-                - self.agent.__L1
-                * c.g
-                * (self.agent.__M1 + self.agent.__M2)
-                * np.cos(x1)
-                - self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
-                + tau1
-            )
-            + (self.agent.__L1 * np.cos(x2) + self.agent.__L2)
-            * (
-                self.agent.__L1
-                * self.agent.__L2
-                * self.agent.__M2
-                * x3**2
-                * np.sin(x2)
-                + self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
-                - tau2
-            )
-        ) / (
-            self.agent.__L1**2
-            * self.agent.__L2
-            * (self.agent.__M1 + self.agent.__M2 * np.sin(x2) ** 2)
-        )
-
-        dx4 = (
-            -self.agent.__L2
-            * self.agent.__M2
-            * (self.agent.__L1 * np.cos(x2) + self.agent.__L2)
-            * (
-                2
-                * self.agent.__L1
-                * self.agent.__L2
-                * self.agent.__M2
-                * x3
-                * x4**3
-                * np.sin(x2)
-                - self.agent.__L1
-                * c.g
-                * (self.agent.__M1 + self.agent.__M2)
-                * np.cos(x1)
-                - self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
-                + tau1
-            )
-            - (
-                self.agent.__L1
-                * self.agent.__L2
-                * self.agent.__M2
-                * x3**2
-                * np.sin(x2)
-                + self.agent.__L2 * c.g * self.agent.__M2 * np.cos(x1 + x2)
-                - tau2
-            )
-            * (
-                self.agent.__L1**2 * self.agent.__M1
-                + self.agent.__L1**2 * self.agent.__M2
-                + 2 * self.agent.__L1 * self.agent.__L2 * self.agent.__M2 * np.cos(x2)
-                + self.agent.__L2**2 * self.agent.__M2
-            )
-        ) / (
-            self.agent.__L1**2
-            * self.agent.__L2**2
-            * self.agent.__M2
-            * (self.agent.__M1 + self.agent.__M2 * np.sin(x2) ** 2)
-        )
-        return np.array([dx3, dx4])
-
-    def simulate(self, x0, u, dt):
-        """
-        Simulates the system for a time step dt.
-        """
-        x = np.zeros((4, 1))
-        x[0] = x0[0]
-        x[1] = x0[1]
-        x[2] = x0[2]
-        x[3] = x0[3]
-        dx = np.zeros((4, 1))
-        dx[0] = x0[2]
-        dx[1] = x0[3]
-        next_state = self.evaluate_dynamics(x[0], x[1], x[2], x[3], u[0], u[1])
-        dx[2] = next_state[0]
-        dx[3] = next_state[1]
-        x = x + dx * dt
-        return x
-
-    def get_indexes(self, state, action):
+    def get_indexes(self, state):
         """
         Returns the tiles of the current state.
         """
 
-        [q1, q2], [dq1, dq2] = state
+        q1, dq1, q2, dq2 = state
 
-        scaleFactor_q1 = self.__M / (self.__q1b[1] - self.__q1b[0])
-        scaleFactor_q2 = self.__M / (self.__q2b[1] - self.__q2b[0])
-        scaleFactor_dq1 = self.__M / (self.__dq1b[1] - self.__dq1b[0])
-        scaleFactor_dq2 = self.__M / (self.__dq2b[1] - self.__dq2b[0])
+        scaleFactor_q1 = self.__num_tilings / (self.__widths[0])
+        scaleFactor_dq1 = self.__num_tilings / (self.__widths[1])
+        scaleFactor_q2 = self.__num_tilings / (self.__widths[2])
+        scaleFactor_dq2 = self.__num_tilings / (self.__widths[3])
 
-        return tiles(
-            self.iht,
-            self.__M,
-            [
+        return tileswrap(
+            self.iht,  # index hash table
+            self.__num_tilings,  # num tilings
+            [  # coordinates of the state
                 scaleFactor_q1 * q1,
                 scaleFactor_dq1 * dq1,
                 scaleFactor_q2 * q2,
                 scaleFactor_dq2 * dq2,
             ],
-            action,
+            # width of each tiling
+            [self.__widths[0], self.__widths[1], self.__widths[2], self.__widths[3]],
         )
+
+    def is_done(self):
+        """
+        Checks if the current state is terminal.
+        """
+        # compute the forward kinematics to get the position
+        # of the end effector at the current state
+        p = self.agent.get_p()
+        if self.agent._is_inside_ws(p):
+            if np.linalg.norm(p - self.agent.target) <= self.__epsilon:
+                return True
+        return False
+
+    def SARSA(self):
+        """
+        This function implements the SARSA algorithm for the double pendulum system.
+        """
+        for episode in range(0, self.__num_episodes):
+            print("Episode: ", episode)
+            # Reset the environment for new episode
+            self.agent.reset()
+            # Get the initial state
+            state = self.agent.get_state()
+            # Get the initial action
+            action = self.epsGreedy(state)
+            # Run the episode until the agent reaches the goal
+            while not self.is_done():
+                # Get the next state, next action and reward
+                next_state = self.agent.get_next_state(state, action)
+                next_action = self.epsGreedy(next_state)
+                reward = self.agent.get_reward(episode)
+                # Update the reward history for the current episode
+                self.__reward_history[episode] += reward
+                # Compute the TD error
+                delta = (
+                    reward
+                    + self.__gamma
+                    * self.__w[next_action]
+                    @ self.get_features(next_state)
+                    - self.__w[action] @ self.get_features(state)
+                )
+                # Update the weights
+                self.__w[action] += self.__alpha * delta * self.get_features(state)
+                # Set new values for the state and action
+                state = next_state
+                action = next_action

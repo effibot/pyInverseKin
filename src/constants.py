@@ -35,6 +35,14 @@ WIDTH, HEIGHT = 640, 480
 # Screen Center
 START = v(WIDTH // 2, HEIGHT // 2)
 
+# Number of features
+NUM_FEATURES = 512
+
+# Number of actions
+NUM_ACTIONS = 9
+
+# Number of Tiling
+NUM_TILINGS = 10
 
 def _to_zero(vector) -> v:
     # make rigid transformation to move the vector to the center of the screen
@@ -46,11 +54,8 @@ ALPHA = 1e-3
 GAMMA = 1
 SIGMA = 1e-2
 EPSILON = 2e-1
-NUM_EPISODES = 1e3
-M = 10
-N = 4
-A = 3
-
+NUM_EPISODES = int(1e3)
+TIME_STEP = 1e-2
 init_cond = [
     np.asarray(
         [
