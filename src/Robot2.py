@@ -405,3 +405,9 @@ class Robot(object):
         # compute the forward kinematics to get the position
         self.__p = self.compute_fwd_kin()
         return next_state
+
+    def set_target(self, target):
+        """
+        Sets the target for the robotic arm.
+        """
+        self.target = target

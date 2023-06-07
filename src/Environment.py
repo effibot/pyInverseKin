@@ -33,7 +33,7 @@ class Environ(object):
         )  # widths of the working range
         self.iht = IHT(c.NUM_FEATURES)  # index hash table
         self.__reward_history = np.zeros((self.__num_episodes, 1))
-
+        self.__action_history = [[]] * self.__num_episodes
     def get_info(self):
         print(
             f"Number of features: {self.__num_features}\n"
@@ -72,7 +72,7 @@ class Environ(object):
             # return the action with the highest Q value
             a_i = np.argmax(q_a)
 
-        return self.agent.get_action(a_i)
+        return self.agent.get_action(a_i), a_i
 
     def dynamics(self):
         """
@@ -134,25 +134,38 @@ class Environ(object):
             # Get the initial state
             state = self.agent.get_state()
             # Get the initial action
-            action = self.epsGreedy(state)
+            action, index = self.epsGreedy(state)
+            self.__action_history[episode] = [index]
             # Run the episode until the agent reaches the goal
+            step = 0
             while not self.is_done():
-                # Get the next state, next action and reward
+                step += 1
+                # Get esteem for the current state
+                x = self.get_features(state)
+                # Get the next state
                 next_state = self.agent.get_next_state(state, action)
-                next_action = self.epsGreedy(next_state)
+                # Get the next action
+                next_action, next_index = self.epsGreedy(next_state)
+                self.__action_history[episode].append(next_index)
+                # Get the reward for the current state
                 reward = self.agent.get_reward(episode)
                 # Update the reward history for the current episode
                 self.__reward_history[episode] += reward
-                # Compute the TD error
-                delta = (
-                    reward
-                    + self.__gamma
-                    * self.__w[next_action]
-                    @ self.get_features(next_state)
-                    - self.__w[action] @ self.get_features(state)
-                )
+                # Verify if the next state is terminal to skip useless computations
+                if self.is_done():
+                    # Compute the TD error
+                    delta = reward - self.__w @ x
+                    # Update the weights
+                    self.__w[index] += self.__alpha * delta * x
+                    print("Episode finished after {} timesteps".format(step))
+                    break
+                # Get esteem for the next state
+                xp = self.get_features(next_state)
+                
+                # Compute the TD error for the next state
+                delta = reward + self.__gamma * self.__w @ xp - self.__w @ x
                 # Update the weights
-                self.__w[action] += self.__alpha * delta * self.get_features(state)
+                self.__w[next_index] += self.__alpha * delta * x
                 # Set new values for the state and action
                 state = next_state
                 action = next_action

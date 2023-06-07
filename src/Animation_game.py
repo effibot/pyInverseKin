@@ -95,6 +95,7 @@ if __name__ == "__main__":
     env = Environ(arm)
     n = 100
     ws = arm.generate_ws_curves(n)
+    arm.set_target(target)
     env.get_info()
     print(env.get_indexes(arm.get_state()))
     # while running:
