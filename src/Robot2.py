@@ -372,12 +372,9 @@ class Robot(object):
         # calculate the distance between the end effector and the target
 
         if self._is_inside_ws(self.__p):
-            covered_distance = np.linalg.norm(self.__p - self.target)
-            if covered_distance <= c.EPSILON:
-                return 1
-            elif covered_distance >= self.__distance_history[episode - 1]:
-                self.__distance_history[episode] = covered_distance
-                return -1
+            covered_distance = np.linalg.norm(self.__p - self.target)**2
+            self.__distance_history[episode] = covered_distance
+            return -covered_distance
         return -100
 
     def get_next_state(self, state, action):

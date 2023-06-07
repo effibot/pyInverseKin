@@ -82,23 +82,23 @@ def render(robot, ws):
 from Environment import Environ
 
 if __name__ == "__main__":
-    pygame.init()
+    # pygame.init()
     size = c.WIDTH, c.HEIGHT
-    flags = pygame.DOUBLEBUF
-    screen = pygame.display.set_mode(size, flags)
-    surface = screen.get_rect()
-    center = np.array(surface.center)
-    clock = pygame.time.Clock()
+    # flags = pygame.DOUBLEBUF
+    # screen = pygame.display.set_mode(size, flags)
+    # surface = screen.get_rect()
+    # center = np.array(surface.center)
+    # clock = pygame.time.Clock()
     wr = c.WORKING_RANGE
     # arm = Robot("2 DoF Planar Robot", l1, l2, working_range)
-    arm = Robot(c.NAME, c.L1, c.L2, working_range=wr, center=center)
+    # arm = Robot(c.NAME, c.L1, c.L2, working_range=wr, center=center)
+    arm = Robot(c.NAME, c.L1, c.L2, working_range=wr)
     env = Environ(arm)
     n = 100
     ws = arm.generate_ws_curves(n)
     arm.set_target(target)
     env.get_info()
-    print(env.get_indexes(arm.get_state()))
-    # while running:
+    # while running:+
     #    for event in pygame.event.get():
     #        if event.type == pygame.QUIT:
     #            sys.exit()

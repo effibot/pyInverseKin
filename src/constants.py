@@ -55,7 +55,8 @@ GAMMA = 1
 SIGMA = 1e-2
 EPSILON = 2e-1
 NUM_EPISODES = int(1e3)
-TIME_STEP = 1e-2
+TIME_STEP = 1e-3
+
 init_cond = [
     np.asarray(
         [

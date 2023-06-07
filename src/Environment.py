@@ -34,6 +34,7 @@ class Environ(object):
         self.iht = IHT(c.NUM_FEATURES)  # index hash table
         self.__reward_history = np.zeros((self.__num_episodes, 1))
         self.__action_history = [[]] * self.__num_episodes
+
     def get_info(self):
         print(
             f"Number of features: {self.__num_features}\n"
@@ -119,7 +120,7 @@ class Environ(object):
         # of the end effector at the current state
         p = self.agent.get_p()
         if self.agent._is_inside_ws(p):
-            if np.linalg.norm(p - self.agent.target) <= self.__epsilon:
+            if np.linalg.norm(p - self.agent.target) ** 2 <= self.__epsilon:
                 return True
         return False
 
@@ -140,6 +141,11 @@ class Environ(object):
             step = 0
             while not self.is_done():
                 step += 1
+                print(
+                    f"step: {step}\t reward: {self.__reward_history[episode]}\t"
+                    + f"pos: {self.agent.get_p()}\t ws: {self.agent._is_inside_ws(self.agent.get_p())}"
+                    + f"q: {self.agent.get_q()}\t dq: {self.agent.get_dq()}"
+                )
                 # Get esteem for the current state
                 x = self.get_features(state)
                 # Get the next state
@@ -161,11 +167,10 @@ class Environ(object):
                     break
                 # Get esteem for the next state
                 xp = self.get_features(next_state)
-                
                 # Compute the TD error for the next state
                 delta = reward + self.__gamma * self.__w @ xp - self.__w @ x
                 # Update the weights
-                self.__w[next_index] += self.__alpha * delta * x
+                self.__w[next_index] += self.__alpha * delta[next_index] * x.T[0]
                 # Set new values for the state and action
                 state = next_state
                 action = next_action
