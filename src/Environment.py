@@ -26,8 +26,8 @@ class Environ(object):
         self.__widths = np.array(
             [
                 self.__q1b[1] - self.__q1b[0],
-                self.__dq1b[1] - self.__dq1b[0],
                 self.__q2b[1] - self.__q2b[0],
+                self.__dq1b[1] - self.__dq1b[0],
                 self.__dq2b[1] - self.__dq2b[0],
             ]
         )  # widths of the working range
@@ -75,28 +75,16 @@ class Environ(object):
 
         return self.agent.get_action(a_i), a_i
 
-    def dynamics(self):
-        """
-        Returns the dynamics of the system integrated over a time step.
-        x1 = q1
-        x2 = q2
-        x3 = dq1
-        x4 = dq2
-        dx3 = ddq1
-        dx4 = ddq2
-        """
-        pass
-
     def get_indexes(self, state):
         """
         Returns the tiles of the current state.
         """
 
-        q1, dq1, q2, dq2 = state
+        q1, q2, dq1, dq2 = state
 
         scaleFactor_q1 = self.__num_tilings / (self.__widths[0])
-        scaleFactor_dq1 = self.__num_tilings / (self.__widths[1])
-        scaleFactor_q2 = self.__num_tilings / (self.__widths[2])
+        scaleFactor_q2 = self.__num_tilings / (self.__widths[1])
+        scaleFactor_dq1 = self.__num_tilings / (self.__widths[2])
         scaleFactor_dq2 = self.__num_tilings / (self.__widths[3])
 
         return tileswrap(
@@ -104,8 +92,8 @@ class Environ(object):
             self.__num_tilings,  # num tilings
             [  # coordinates of the state
                 scaleFactor_q1 * q1,
-                scaleFactor_dq1 * dq1,
                 scaleFactor_q2 * q2,
+                scaleFactor_dq1 * dq1,
                 scaleFactor_dq2 * dq2,
             ],
             # width of each tiling

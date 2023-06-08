@@ -230,7 +230,7 @@ class Robot(object):
         return self.__actions[index]
 
     def get_state(self):
-        return [self.__q[0], self.__dq[0], self.__q[1], self.__dq[1]]
+        return [self.__q[0], self.__q[1], self.__dq[0], self.__dq[1]]
 
     def update_joints(self):
         """
@@ -357,8 +357,8 @@ class Robot(object):
         x[2] = x0[2]  # dq1
         x[3] = x0[3]  # dq2
         dx = np.zeros((4, 1))
-        dx[0] = x0[2]  # tau1
-        dx[1] = x0[3]  # tau2
+        dx[0] = x0[2]
+        dx[1] = x0[3]
         next_state = self.evaluate_dynamics(x[0], x[1], x[2], x[3], u[0], u[1])
         dx[2] = next_state[0]
         dx[3] = next_state[1]
@@ -372,7 +372,7 @@ class Robot(object):
         # calculate the distance between the end effector and the target
 
         if self._is_inside_ws(self.__p):
-            covered_distance = np.linalg.norm(self.__p - self.target)**2
+            covered_distance = np.linalg.norm(self.__p - self.target) ** 2
             self.__distance_history[episode] = covered_distance
             return -covered_distance
         return -100
