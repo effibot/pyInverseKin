@@ -27,7 +27,7 @@ g = 9.81
 NAME = "2 DoF Planar Robot"
 
 # Working Range (in radians)
-WORKING_RANGE = np.array([[-np.pi, np.pi], [-3 * np.pi / 4, 3 * np.pi / 4]])
+WORKING_RANGE = np.array([[-np.pi/20, np.pi], [-3 * np.pi / 4, 3 * np.pi / 4]])
 WORKING_VELOCITIES = np.pi / 180 * np.array([[-1, 1], [-1, 1]])
 # Screen Size
 WIDTH, HEIGHT = 640, 480
