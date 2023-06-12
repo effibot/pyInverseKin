@@ -26,8 +26,8 @@ class Environ(object):
         self.__widths = np.array(
             [
                 self.__q1b[1] - self.__q1b[0],
-                self.__q2b[1] - self.__q2b[0],
                 self.__dq1b[1] - self.__dq1b[0],
+                self.__q2b[1] - self.__q2b[0],
                 self.__dq2b[1] - self.__dq2b[0],
             ]
         )  # widths of the working range
@@ -80,11 +80,11 @@ class Environ(object):
         Returns the tiles of the current state.
         """
 
-        q1, q2, dq1, dq2 = state
+        q1, dq1, q2, dq2 = state
 
         scaleFactor_q1 = self.__num_tilings / (self.__widths[0])
-        scaleFactor_q2 = self.__num_tilings / (self.__widths[1])
-        scaleFactor_dq1 = self.__num_tilings / (self.__widths[2])
+        scaleFactor_dq1 = self.__num_tilings / (self.__widths[1])
+        scaleFactor_q2 = self.__num_tilings / (self.__widths[2])
         scaleFactor_dq2 = self.__num_tilings / (self.__widths[3])
 
         return tileswrap(
@@ -92,8 +92,8 @@ class Environ(object):
             self.__num_tilings,  # num tilings
             [  # coordinates of the state
                 scaleFactor_q1 * q1,
-                scaleFactor_q2 * q2,
                 scaleFactor_dq1 * dq1,
+                scaleFactor_q2 * q2,
                 scaleFactor_dq2 * dq2,
             ],
             # width of each tiling
@@ -127,17 +127,20 @@ class Environ(object):
             self.__action_history[episode] = [index]
             # Run the episode until the agent reaches the goal
             step = 0
+            ti = 0
             while not self.is_done():
+                # Update the step and time variables
                 step += 1
-                print(
-                    f"step: {step}\t reward: {self.__reward_history[episode]}\t"
-                    + f"pos: {self.agent.get_p()}\t ws: {self.agent._is_inside_ws(self.agent.get_p())}"
-                    + f"q: {self.agent.get_q()}\t dq: {self.agent.get_dq()}"
-                )
+                tf = ti + c.TIME_STEP
+                #print(
+                #    f"step: {step}\t reward: {self.__reward_history[episode]}\t"
+                #    + f"pos: {self.agent.get_p()}\t ws: {self.agent._is_inside_ws(self.agent.get_p())}\t"
+                #    + f"q: {self.agent.get_q()}\t dq: {self.agent.get_dq()}"
+                #)
                 # Get esteem for the current state
                 x = self.get_features(state)
                 # Get the next state
-                next_state = self.agent.get_next_state(state, action)
+                next_state = self.agent.get_next_state(state, action, [ti, tf])
                 # Get the next action
                 next_action, next_index = self.epsGreedy(next_state)
                 self.__action_history[episode].append(next_index)
@@ -151,7 +154,7 @@ class Environ(object):
                     delta = reward - self.__w @ x
                     # Update the weights
                     self.__w[index] += self.__alpha * delta * x
-                    print("Episode finished after {} timesteps".format(step))
+                    print("Episode {episode} finished after {} timesteps".format(step))
                     break
                 # Get esteem for the next state
                 xp = self.get_features(next_state)
@@ -162,3 +165,4 @@ class Environ(object):
                 # Set new values for the state and action
                 state = next_state
                 action = next_action
+                ti = tf

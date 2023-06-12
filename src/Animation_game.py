@@ -106,7 +106,7 @@ if __name__ == "__main__":
                 if event.key == pygame.K_ESCAPE:
                     running = False
         render(arm, ws)
-        arm.set_joint_angles(arm.get_q() + [0.01, 0.01])
-    #env.SARSA()
+        #arm.set_joint_angles(arm.get_q() + [0.01, 0.01])
+        env.SARSA()
         clock.tick(60)
     pygame.quit()

@@ -3,6 +3,7 @@ import pygame
 import constants as c
 from pygame.math import Vector2 as v
 from pygame.gfxdraw import pixel as draw_pixel
+from simulation import Dynamic
 
 
 # The class defines a robot with two links and joint angles, velocities, and end effector position, as
@@ -46,6 +47,7 @@ class Robot(object):
             ]
         )  # action to be taken
         self.__distance_history = np.zeros((c.NUM_EPISODES, 1))
+        self.__system = Dynamic()
 
     def forward_kinematics(self, q1, q2):
         """Compute the forward kinematics of the robot.
@@ -230,7 +232,10 @@ class Robot(object):
         return self.__actions[index]
 
     def get_state(self):
-        return [self.__q[0], self.__q[1], self.__dq[0], self.__dq[1]]
+        """
+        Return the current state as a list of [q1, dq1, q2, dq2]
+        """
+        return [self.__q[0], self.__dq[0], self.__q[1], self.__dq[1]]
 
     def update_joints(self):
         """
@@ -282,88 +287,6 @@ class Robot(object):
         )
         # velocities are set to zero when resetting
         self.__dq = np.array([0, 0])
-        # update joint positions
-        self.update_joints()
-
-    def evaluate_dynamics(self, x1, x2, x3, x4, tau1, tau2):
-        """
-        This function evaluates the dynamics of the system given its state and applied
-        torques.
-
-        :param x1: The angle of the first link of the double pendulum with respect to the vertical
-        direction
-        :param x2: The parameter x2 represents the angle of the second link of a double pendulum system
-        with respect to the vertical axis
-        :param x3: The angular velocity of the second link of a double pendulum system
-        :param x4: x4 is a state variable representing the angular velocity of the second link of a
-        double pendulum system
-        :param tau1: tau1 is the torque applied to the first joint of a double pendulum system
-        :param tau2: tau2 is the torque applied to the second joint of a two-link pendulum system
-        :return: a numpy array with two elements, dx3 and dx4, which are the calculated values for the
-        derivatives of x3 and x4 based on the given inputs and the dynamics equations.
-        """
-        dx3 = (
-            self.__L2
-            * (
-                2 * self.__L1 * self.__L2 * self.__M2 * x3 * x4**3 * np.sin(x2)
-                - self.__L1 * c.g * (self.__M1 + self.__M2) * np.cos(x1)
-                - self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
-                + tau1
-            )
-            + (self.__L1 * np.cos(x2) + self.__L2)
-            * (
-                self.__L1 * self.__L2 * self.__M2 * x3**2 * np.sin(x2)
-                + self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
-                - tau2
-            )
-        ) / (self.__L1**2 * self.__L2 * (self.__M1 + self.__M2 * np.sin(x2) ** 2))
-
-        dx4 = (
-            -self.__L2
-            * self.__M2
-            * (self.__L1 * np.cos(x2) + self.__L2)
-            * (
-                2 * self.__L1 * self.__L2 * self.__M2 * x3 * x4**3 * np.sin(x2)
-                - self.__L1 * c.g * (self.__M1 + self.__M2) * np.cos(x1)
-                - self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
-                + tau1
-            )
-            - (
-                self.__L1 * self.__L2 * self.__M2 * x3**2 * np.sin(x2)
-                + self.__L2 * c.g * self.__M2 * np.cos(x1 + x2)
-                - tau2
-            )
-            * (
-                self.__L1**2 * self.__M1
-                + self.__L1**2 * self.__M2
-                + 2 * self.__L1 * self.__L2 * self.__M2 * np.cos(x2)
-                + self.__L2**2 * self.__M2
-            )
-        ) / (
-            self.__L1**2
-            * self.__L2**2
-            * self.__M2
-            * (self.__M1 + self.__M2 * np.sin(x2) ** 2)
-        )
-        return np.array([dx3, dx4])
-
-    def simulate(self, x0, u, dt):
-        """
-        Simulates the system for a time step dt.
-        """
-        x = np.zeros((4, 1))
-        x[0] = x0[0]  # q1
-        x[1] = x0[1]  # q2
-        x[2] = x0[2]  # dq1
-        x[3] = x0[3]  # dq2
-        dx = np.zeros((4, 1))
-        dx[0] = x0[2]
-        dx[1] = x0[3]
-        next_state = self.evaluate_dynamics(x[0], x[1], x[2], x[3], u[0], u[1])
-        dx[2] = next_state[0]
-        dx[3] = next_state[1]
-        x = x + dx * dt
-        return x
 
     def get_reward(self, episode):
         """
@@ -377,7 +300,7 @@ class Robot(object):
             return -covered_distance
         return -100
 
-    def get_next_state(self, state, action):
+    def get_next_state(self, state, action, t):
         """
         This function calculates the next state of the robotic arm based on the current state and
         the action taken. The next state is calculated using the forward kinematics equations, with
@@ -386,22 +309,30 @@ class Robot(object):
         :param action: The action taken by the  The action is a list of two values, which
         represent the increments to be added to the current joint angles.
         :type action: list
-        :return: a tuple containing the next state of the robotic arm, which is calculated using the
-        forward kinematics equations, and the reward obtained from the action taken.
+        :return: a list of four values, which represent the angles and angular velocities
+        of the two joints of the robotic arm at the next state.
         """
+        # unpack the elapsed time
+        ti, tf = t
         # assign the torque values to variables
         tau1, tau2 = action
         # from the current state, calculate the next state
-        next_state = self.simulate(x0=state, u=[tau1, tau2], dt=c.TIME_STEP)
+        next_state = self.__system.step(
+            state, [ti, tf], tau1, tau2, self.__M1, self.__M2, c.g, self.__L1, self.__L2
+        )
         # update the joint angles
-        self.__q1 = next_state[0]
-        self.__q2 = next_state[1]
+        self.set_q(np.array([next_state[0], next_state[2]]))
         # update the joint velocities
-        self.__dq1 = next_state[2]
-        self.__dq2 = next_state[3]
-        # compute the forward kinematics to get the position
-        self.__p = self.compute_fwd_kin()
-        return next_state
+        self.set_dq(np.array([next_state[1], next_state[3]]))
+        #print(f"state: {state}\t action: {action}\t next_state: {next_state}")
+        self.update_joints()
+        return self.get_state()
+
+    def set_q(self, q):
+        self.__q = q
+
+    def set_dq(self, dq):
+        self.__dq = dq
 
     def set_target(self, target):
         """
