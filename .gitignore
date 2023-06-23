@@ -159,4 +159,4 @@ cython_debug/
 # vscode
 .vscode/
 
-.gif
+*.gif
