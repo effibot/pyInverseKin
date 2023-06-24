@@ -9,6 +9,7 @@ from pygame import font
 # CONSTANTS
 running = True
 target = c._to_zero(v(c.L1 / 3 * 2 + c.L2, 50))
+frame_count = 0
 
 
 def make_axis(ws, ax=None, **plt_kwargs):
@@ -71,15 +72,23 @@ def render(robot, ws):
     screen.fill(c.WHITE)
     # draw the axis
     make_axis(screen)
-    # draw the robot
-    robot.render(screen, True)
-    # # draw target
+    # draw target
     pygame.draw.circle(screen, c.BLACK, (int(target[0]), int(target[1])), 7.5)
     pygame.draw.circle(screen, c.RED, (int(target[0]), int(target[1])), 5)
+    # draw the robot
+    robot.render(screen, True)
+    robot.set_joint_angles(env.agent.position_history[frame_count])
+    print(f"q: {env.agent.position_history[frame_count]}\t step {frame_count}")
     pygame.display.flip()
 
 
 from Environment import Environ
+import threading
+
+
+def learn(env):
+    env.SARSA()
+
 
 if __name__ == "__main__":
     pygame.init()
@@ -92,12 +101,16 @@ if __name__ == "__main__":
     wr = c.WORKING_RANGE
     # arm = Robot("2 DoF Planar Robot", l1, l2, working_range)
     arm = Robot(c.NAME, c.L1, c.L2, working_range=wr, center=center)
-    #arm = Robot(c.NAME, c.L1, c.L2, working_range=wr)
-    env = Environ(arm)
+    # arm = Robot(c.NAME, c.L1, c.L2, working_range=wr)
+    env = Environ(target)
     n = 100
     ws = arm.generate_ws_curves(n)
     arm.set_target(target)
     env.get_info()
+    learner = threading.Thread(target=learn, args=(env,))
+    learner.start()
+    learner.join()
+    print("Learning finished")
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -106,7 +119,8 @@ if __name__ == "__main__":
                 if event.key == pygame.K_ESCAPE:
                     running = False
         render(arm, ws)
-        #arm.set_joint_angles(arm.get_q() + [0.01, 0.01])
-        env.SARSA()
         clock.tick(60)
+        frame_count = (
+            frame_count + 1 if frame_count < len(env.agent.position_history) - 1 else 0
+        )
     pygame.quit()

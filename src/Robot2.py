@@ -3,7 +3,6 @@ import pygame
 import constants as c
 from pygame.math import Vector2 as v
 from pygame.gfxdraw import pixel as draw_pixel
-from simulation import Dynamic
 
 
 # The class defines a robot with two links and joint angles, velocities, and end effector position, as
@@ -47,7 +46,6 @@ class Robot(object):
             ]
         )  # action to be taken
         self.__distance_history = np.zeros((c.NUM_EPISODES, 1))
-        self.__system = Dynamic()
 
     def forward_kinematics(self, q1, q2):
         """Compute the forward kinematics of the robot.
@@ -61,9 +59,9 @@ class Robot(object):
         """
         x = self.__L1 * np.cos(q1) + self.__L2 * np.cos(q1 + q2)
         y = self.__L1 * np.sin(q1) + self.__L2 * np.sin(q1 + q2)
-        return np.asarray((x, y))
+        return np.asarray([x, y])
 
-    def compute_fwd_kin(self):
+    def compute_fk(self):
         """Compute the forward kinematics of the robot."""
         return self.forward_kinematics(self.__q[0], self.__q[1])
 
@@ -228,15 +226,6 @@ class Robot(object):
     def get_dq(self):
         return self.__dq
 
-    def get_action(self, index):
-        return self.__actions[index]
-
-    def get_state(self):
-        """
-        Return the current state as a list of [q1, dq1, q2, dq2]
-        """
-        return [self.__q[0], self.__dq[0], self.__q[1], self.__dq[1]]
-
     def update_joints(self):
         """
         The function updates the positions of the joints in a robotic arm based on the current joint
@@ -273,34 +262,7 @@ class Robot(object):
         self.__q = q
         self.update_joints()
 
-    def reset(self):
-        # randomize initial joint angles
-        self.__q = np.array(
-            [
-                np.random.uniform(
-                    self.__working_range[0][0], self.__working_range[0][1]
-                ),
-                np.random.uniform(
-                    self.__working_range[1][0], self.__working_range[1][1]
-                ),
-            ]
-        )
-        # velocities are set to zero when resetting
-        self.__dq = np.array([0, 0])
-
-    def get_reward(self, episode):
-        """
-        Returns the reward for the current state.
-        """
-        # calculate the distance between the end effector and the target
-
-        if self._is_inside_ws(self.__p):
-            covered_distance = np.linalg.norm(self.__p - self.target) ** 2
-            self.__distance_history[episode] = covered_distance
-            return -covered_distance
-        return -100
-
-    def get_next_state(self, state, action, t):
+    def get_next_state(self, state, action):
         """
         This function calculates the next state of the robotic arm based on the current state and
         the action taken. The next state is calculated using the forward kinematics equations, with
@@ -312,21 +274,10 @@ class Robot(object):
         :return: a list of four values, which represent the angles and angular velocities
         of the two joints of the robotic arm at the next state.
         """
-        # unpack the elapsed time
-        ti, tf = t
-        # assign the torque values to variables
-        tau1, tau2 = action
         # from the current state, calculate the next state
-        next_state = self.__system.step(
-            state, [ti, tf], tau1, tau2, self.__M1, self.__M2, c.g, self.__L1, self.__L2
-        )
-        # update the joint angles
-        self.set_q(np.array([next_state[0], next_state[2]]))
-        # update the joint velocities
-        self.set_dq(np.array([next_state[1], next_state[3]]))
-        #print(f"state: {state}\t action: {action}\t next_state: {next_state}")
-        self.update_joints()
-        return self.get_state()
+        self.system.step(state, action)
+        next_state = self.system.get_state()
+        return next_state
 
     def set_q(self, q):
         self.__q = q
