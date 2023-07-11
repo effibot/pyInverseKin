@@ -262,23 +262,6 @@ class Robot(object):
         self.__q = q
         self.update_joints()
 
-    def get_next_state(self, state, action):
-        """
-        This function calculates the next state of the robotic arm based on the current state and
-        the action taken. The next state is calculated using the forward kinematics equations, with
-        the addition of the action taken to the current joint angles.
-
-        :param action: The action taken by the  The action is a list of two values, which
-        represent the increments to be added to the current joint angles.
-        :type action: list
-        :return: a list of four values, which represent the angles and angular velocities
-        of the two joints of the robotic arm at the next state.
-        """
-        # from the current state, calculate the next state
-        self.system.step(state, action)
-        next_state = self.system.get_state()
-        return next_state
-
     def set_q(self, q):
         self.__q = q
 

@@ -67,7 +67,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-
 # PyBuilder
 .pybuilder/
 target/
@@ -160,3 +159,6 @@ cython_debug/
 .vscode/
 
 *.gif
+
+# matlab
+*.asv

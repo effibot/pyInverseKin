@@ -20,7 +20,7 @@ class Environ(object):
         self.__num_episodes = c.NUM_EPISODES
         self.__features = np.zeros((c.NUM_FEATURES, 1))  # features vector
         self.__w = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))  # weights matrix
-        self.__widths = np.array(
+        self.__widths: np.ndarray = np.array(
             [
                 c.WORKING_RANGE[0, 1] - c.WORKING_RANGE[0, 0],
                 c.WORKING_RANGE[1, 1] - c.WORKING_RANGE[1, 0],
@@ -106,16 +106,15 @@ class Environ(object):
             action, index = self.epsGreedy(state)
             # Run the episode until the agent reaches the goal
             step = 0
-            # while step < 20000:
             while not self.agent.is_done() and step < c.MAX_STEPS:
                 self.agent.set_pos_history(step)
                 # Update the step and time variables
                 step += 1
-                # print(
-                #     f"step: {step}\t reward: {self.agent.reward_history[episode]}\t"
-                #     + f"pos: {self.agent.get_p()}\t ws: {self.agent.is_inside_ws()}\t"
-                #     + f"q: {self.agent.get_state()[0:2]}\t dq: {self.agent.get_state()[2:]}"
-                # )
+                #print(
+                #    f"step: {step}\t reward: {self.agent.reward_history[episode]}\t"
+                #    + f"pos: {self.agent.get_p()}\t ws: {self.agent.is_inside_ws()}\t"
+                #    + f"q: {self.agent.get_state()[0:2]}\t dq: {self.agent.get_state()[2:]}"
+                #)
                 # Get esteem for the current state
                 x = self.get_features(state, action)
                 # Get the next state and the reward
@@ -144,5 +143,3 @@ class Environ(object):
                 # Set new values for the state and action
                 state = next_state
                 action = next_action
-            if step >= 3000:
-                break

@@ -78,7 +78,7 @@ def render(robot, ws):
     # draw the robot
     robot.render(screen, True)
     robot.set_joint_angles(env.agent.position_history[frame_count])
-    print(f"q: {env.agent.position_history[frame_count]}\t step {frame_count}")
+    #print(f"q: {env.agent.position_history[frame_count]}\t step {frame_count}")
     pygame.display.flip()
 
 

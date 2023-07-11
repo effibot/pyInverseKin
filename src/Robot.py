@@ -33,10 +33,9 @@ class Robot(object):
         # Robot joint constraints
         self.working_range: np.ndarray = working_range
         # Robot Jacobian matrix - for inverse kinematics computation with the Jacobian pseudoinverse
-        self.__J = np.zeros((2, 2))
+        self.__J = np.zeros((2, 2), dtype=np.float64)
         # Resulting trajectory
         self.trajectory = [[], [], []]
-        
 
     def forward_kinematics(self, q1, q2):
         """Compute the forward kinematics of the robot.
