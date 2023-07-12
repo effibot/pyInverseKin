@@ -1,3 +1,4 @@
+from math import pi
 import re
 from sqlite3 import adapt
 
@@ -7,9 +8,9 @@ import numpy as np
 from numpy import ndarray, sin, cos
 from numpy.linalg import norm
 from tiles3 import IHT, tiles
+import pickle
 
 np.random.seed(42)
-
 
 class agent(object):
     def __init__(self, target):
@@ -34,6 +35,7 @@ class agent(object):
         self.reward_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS))
         self.position_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS, 2))
         self.target: ndarray = target
+        self.achieved_target = False
 
     def h_q(self, q1, q2):
         x = c.L1 * cos(q1) + c.L2 * cos(q1 + q2)
@@ -67,9 +69,7 @@ class agent(object):
 
     def reset(self):
         ws = self.generate_ws_curves()
-        i, j = np.random.randint(0, ws[0].shape[0]), np.random.randint(
-            0, ws[1].shape[0]
-        )
+        i, j = np.random.randint(0, ws[0].shape[0]), np.random.randint(0, ws[1].shape[0])
         # randomize initial joint angles
         self.state = np.asarray(
             [
@@ -109,9 +109,7 @@ class agent(object):
 
     def is_inside_ws(self, x, y):
         """Check if the current state is inside the workspace of the robot."""
-        cond = ((x**2 + y**2) < (c.L1 + c.L2) ** 2) & (
-            (x**2 + y**2) > (c.L1 - c.L2) ** 2
-        )
+        cond = ((x**2 + y**2) < (c.L1 + c.L2) ** 2) & ((x**2 + y**2) > (c.L1 - c.L2) ** 2)
         return cond
 
     def compute_distance(self, state):
@@ -126,7 +124,12 @@ class agent(object):
         # compute the distance between the end effector and the target
         covered_distance = self.compute_distance(state)
         # compute the reward
-        reward = -(covered_distance**2)
+        reward = covered_distance**2
+        # get the last assigned reward index for the current episode
+        last_index = np.nonzero(self.reward_history[episode])[0]
+        if last_index.size > 0:
+            if -np.log(reward) == self.reward_history[episode, last_index[-1]]:
+                reward *= 1.1
         # return the reward
         return reward
 
@@ -135,7 +138,8 @@ class agent(object):
         Checks if the current state is terminal.
         """
         p = self.h_q(self.state[0], self.state[1])
-        if norm(p - self.target) <= c.EPSILON:
+        if norm(p - self.target) <= c.GAMMA:
+            self.achieved_target = True
             return True
         return False
 
@@ -207,73 +211,7 @@ class agent(object):
             + g * l1 * l2**2 * m1 * m2 * cos(x1)
             + 2 * l1**2 * l2**2 * m2**2 * x3 * x4 * cos(x2) * sin(x2)
             + g * l1**2 * l2 * m1 * m2 * cos(x1) * cos(x2)
-        ) / (
-            -(l1**2) * l2**2 * m2**2 * cos(x2) ** 2
-            + l1**2 * l2**2 * m2**2
-            + m1 * l1**2 * l2**2 * m2
-        )
-
-        return np.asarray([dx1dt, dx2dt, dx3dt, dx4dt])
-
-    # define the vector field function without friction
-    def dxdt_no_friction(self, x, tau):
-        """This function computes the time derivative of the state vector x without friction.
-
-        Args:
-            x (np.array): state vector
-            constant (dictionary): constants dictionary for the system
-            tau (list): torques
-
-        Returns:
-            np.array: time derivative of the state vector
-        """
-        # unpack the state vector
-        x1, x2, x3, x4 = x[0]
-        # unpack the constants
-        l1 = self.constants["l1"]
-        l2 = self.constants["l2"]
-        m1 = self.constants["m1"]
-        m2 = self.constants["m2"]
-        g = self.constants["g"]
-        # unpack the torques
-        t1, t2 = tau
-        # compute the time derivative of the state vector
-        dx1dt = x3
-        dx2dt = x4
-        dx3dt = (
-            2 * l2 * t1
-            - 2 * l2 * t2
-            - 2 * l1 * t2 * cos(x2)
-            - g * l1 * l2 * m2 * cos(x1 + 2 * x2)
-            + l1**2 * l2 * m2 * x3**2 * sin(2 * x2)
-            + 2 * l1 * l2**2 * m2 * x3**2 * sin(x2)
-            + 2 * l1 * l2**2 * m2 * x4**2 * sin(x2)
-            + 2 * g * l1 * l2 * m1 * cos(x1)
-            + g * l1 * l2 * m2 * cos(x1)
-            + 4 * l1 * l2**2 * m2 * x3 * x4 * sin(x2)
-        ) / (l1**2 * l2 * (2 * m1 + m2 - m2 * cos(2 * x2)))
-        dx4dt = -(
-            l2**2 * m2 * t1
-            - l1**2 * m2 * t2
-            - l1**2 * m1 * t2
-            - l2**2 * m2 * t2
-            + l1 * l2**3 * m2**2 * x3**2 * sin(x2)
-            + l1**3 * l2 * m2**2 * x3**2 * sin(x2)
-            + l1 * l2**3 * m2**2 * x4**2 * sin(x2)
-            + g * l1 * l2**2 * m2**2 * cos(x1)
-            + l1**2 * l2**2 * m2**2 * x3**2 * sin(2 * x2)
-            + (l1**2 * l2**2 * m2**2 * x4**2 * sin(2 * x2)) / 2
-            + l1 * l2 * m2 * t1 * cos(x2)
-            - 2 * l1 * l2 * m2 * t2 * cos(x2)
-            + l1**3 * l2 * m1 * m2 * x3**2 * sin(x2)
-            + 2 * l1 * l2**3 * m2**2 * x3 * x4 * sin(x2)
-            + g * l1**2 * l2 * m2**2 * sin(x1) * sin(x2)
-            + g * l1 * l2**2 * m1 * m2 * cos(x1)
-            - g * l1 * l2**2 * m2**2 * cos(x1) * cos(x2) ** 2
-            + l1**2 * l2**2 * m2**2 * x3 * x4 * sin(2 * x2)
-            + g * l1 * l2**2 * m2**2 * cos(x2) * sin(x1) * sin(x2)
-            + g * l1**2 * l2 * m1 * m2 * sin(x1) * sin(x2)
-        ) / (l1**2 * l2**2 * m2 * (-m2 * cos(x2) ** 2 + m1 + m2))
+        ) / (-(l1**2) * l2**2 * m2**2 * cos(x2) ** 2 + l1**2 * l2**2 * m2**2 + m1 * l1**2 * l2**2 * m2)
 
         return np.asarray([dx1dt, dx2dt, dx3dt, dx4dt])
 
@@ -296,39 +234,10 @@ class agent(object):
         self.state += self.time_step * (k1 + 2 * k2 + 2 * k3 + k4) / 6
         # saturate
         if self.is_sat:
-            self.state[0] = np.clip(
-                self.state[0], c.WORKING_RANGE[0, 0], c.WORKING_RANGE[0, 1]
-            )
-            self.state[1] = np.clip(
-                self.state[1], c.WORKING_RANGE[1, 0], c.WORKING_RANGE[1, 1]
-            )
-        return self.get_state()
-
-    def step_no_friction(self, x, tau):
-        """This function computes the next state of the system with RK4 method without friction.
-
-        Args:
-            x (np.array): state vector
-            tau (list): torques
-
-        Returns:
-            np.array: next state of the system
-        """
-        # RK4 integration
-        k1 = self.dxdt_no_friction(x, tau)
-        k2 = self.dxdt_no_friction(x + self.time_step * k1 / 2, tau)
-        k3 = self.dxdt_no_friction(x + self.time_step * k2 / 2, tau)
-        k4 = self.dxdt_no_friction(x + self.time_step * k3, tau)
-        # update the state
-        self.state += self.time_step * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-        # saturate
-        if self.is_sat:
-            self.state[0, 0] = np.clip(
-                self.state[0, 0], c.WORKING_RANGE[0, 0], c.WORKING_RANGE[0, 1]
-            )
-            self.state[0, 1] = np.clip(
-                self.state[0, 1], c.WORKING_RANGE[1, 0], c.WORKING_RANGE[1, 1]
-            )
+            # self.state[0] = np.clip(self.state[0], c.WORKING_RANGE[0, 0], c.WORKING_RANGE[0, 1])
+            self.state[1] = np.clip(self.state[1], c.WORKING_RANGE[1, 0], c.WORKING_RANGE[1, 1])
+            self.state[2] = np.clip(self.state[2], c.WORKING_VELOCITIES[0, 0], c.WORKING_VELOCITIES[0, 1])
+            self.state[3] = np.clip(self.state[3], c.WORKING_VELOCITIES[1, 0], c.WORKING_VELOCITIES[1, 1])
         return self.get_state()
 
     def get_state_reward_transition(self, state, action, episode):
@@ -348,23 +257,6 @@ class agent(object):
         reward = self.get_reward(state, episode)
         return next_state, reward
 
-    def get_state_reward_transition_no_friction(self, state, action, episode):
-        """This function computes the next state and the reward for the current state and action.
-
-        Args:
-            state (np.array): current state
-            action (np.array): current action
-
-        Returns:
-            np.array: next state
-            float: reward
-        """
-        # compute the next state
-        next_state = self.step_no_friction(state, action)
-        # compute the reward
-        reward = self.get_reward(state, episode)
-        return next_state, reward
-
     def update_histories(self, episode, step, action, reward):
         # update the position history for the current episode at the current step
         self.update_pos_history(episode, step)
@@ -378,6 +270,7 @@ class ws_env:
     def __init__(self) -> None:
         self.iht = IHT(c.NUM_FEATURES)
         self.W = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))
+        # self.W = np.random.rand(c.NUM_ACTIONS, c.NUM_FEATURES)
         self.actions: np.ndarray = [1e5, 1e4] * np.asarray(
             [
                 [-1, -1],
@@ -403,20 +296,10 @@ class ws_env:
         # define the scaling factor
         q1_sf = c.NUM_TILINGS * q1 / (c.WORKING_RANGE[0, 1] - c.WORKING_RANGE[0, 0])
         q2_sf = c.NUM_TILINGS * q2 / (c.WORKING_RANGE[1, 1] - c.WORKING_RANGE[1, 0])
-        q1_d_sf = (
-            c.NUM_TILINGS
-            * q1_d
-            / (c.WORKING_VELOCITIES[0, 1] - c.WORKING_VELOCITIES[0, 0])
-        )
-        q2_d_sf = (
-            c.NUM_TILINGS
-            * q2_d
-            / (c.WORKING_VELOCITIES[1, 1] - c.WORKING_VELOCITIES[1, 0])
-        )
+        q1_d_sf = c.NUM_TILINGS * q1_d / (c.WORKING_VELOCITIES[0, 1] - c.WORKING_VELOCITIES[0, 0])
+        q2_d_sf = c.NUM_TILINGS * q2_d / (c.WORKING_VELOCITIES[1, 1] - c.WORKING_VELOCITIES[1, 0])
         # get the indices of the active tiles
-        active_tiles = tiles(
-            self.iht, c.NUM_TILINGS, [q1_sf, q2_sf, q1_d_sf, q2_d_sf], action
-        )
+        active_tiles = tiles(self.iht, c.NUM_TILINGS, [q1_sf, q2_sf, q1_d_sf, q2_d_sf], action)
         return active_tiles
 
     def epsGreedy(self, state, init=True):
@@ -444,7 +327,7 @@ class ws_env:
         next_q_value = np.sum(self.W[a_i_next, next_active_tiles])
         # update the weights
         delta = reward + c.GAMMA * next_q_value - q_value
-        self.W[a_i_next, next_active_tiles] += c.ALPHA * delta
+        self.W[a_i, active_tiles] += c.ALPHA * delta
 
     def episode_loop(self, agent, episode):
         # reset the agent
@@ -458,9 +341,7 @@ class ws_env:
         # loop until the episode is done
         for step in range(c.MAX_STEPS):
             # get the next state and reward
-            next_state, reward = agent.get_state_reward_transition(
-                state, action, episode
-            )
+            next_state, reward = agent.get_state_reward_transition(state, action, episode)
             # get the next action
             next_action = self.epsGreedy(next_state, False)
             # update the weights
@@ -469,14 +350,25 @@ class ws_env:
             agent.update_histories(episode, step, action, reward)
             # checks if the episode is done
             if agent.is_done():
+                print(f"Episode {episode} finished in {step} steps")
+                # save the weights and the iht on disk
+                with open(f"weights_{episode}.pkl", "wb") as f:
+                    pickle.dump(self.W, f)
+                with open(f"iht_{episode}.pkl", "wb") as f:
+                    pickle.dump(self.iht, f)
                 break
+            elif step == c.MAX_STEPS - 1:
+                print(f"Episode {episode} not finished, increasing penalty")
+                # increase the penalty of 10% - what is zero in the beginning will remain zero
+                self.W *= 1.5
             # update the state and action
             state = next_state
             action = next_action
 
     def reset(self):
-        self.iht = IHT(c.NUM_FEATURES)
-        #self.W = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))
+        # self.iht = IHT(c.NUM_FEATURES)
+        # self.W = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))
+        pass
 
 
 import matplotlib.pyplot as plt
@@ -486,20 +378,42 @@ if __name__ == "__main__":
     target = np.asarray([c.L1 / 3 * 2 + c.L2, 50])
     arm = agent(target)
     env = ws_env()
+    workspace = arm.generate_ws_curves()
+    # plot setup
     fig, ax = plt.subplots(1, 2, figsize=(3, 7))
-    ax[0].set_title("visited q1-q2 pairs")
-    ax[0].legend()
-    ax[1].set_title("target and end effector")
-    ax[1].plot(target[0], target[1], "-r*")
-    ax[1].legend()
-    for episode in range(3):
+    ax[0].set_title("visited q1-q2 pairs globally")
+    ax[1].axis("equal")
+
+    # start learning
+    for episode in range(c.NUM_EPISODES):
         print(f"Episode {episode}")
         env.episode_loop(arm, episode)
-        # print(arm.get_histories())
-        # plot visited points
         pos = arm.get_histories()["position"][episode]
-        ef = arm.h_q(pos[:, 0], pos[:, 1])
+        pos = pos[pos[:, 0] != 0]
         ax[0].plot(pos[:, 0], pos[:, 1], "o")
-        ax[1].plot(ef[0], ef[1], "o", markersize=1)
-        #ax[1].legend(["target", f"end effector in {episode}"])
-    plt.show()
+        ef = arm.h_q(pos[:, 0], pos[:, 1])
+        if episode % 5 == 0:
+            # clear the axes of the trajectory plot
+            ax[1].cla()
+            # plot the results
+            ax[1].set_title(f"End-Effector trajectory at episode {episode}")
+            ax[1].plot(workspace[0], workspace[1], "mo", markersize=0.01)
+            ax[1].plot(target[0], target[1], "-r*")
+            ax[1].plot(ef[0, 0], ef[1, 0], "go")
+            ax[1].plot(ef[0], ef[1], "o", markersize=1)
+            ax[1].legend(["workspace", "target", "starting point", "end effector"])
+            plt.show(block=False)
+            plt.pause(0.1)
+        if arm.achieved_target:
+            print(f"Target reached in episode {episode}")
+            # clear the axes of the trajectory plot
+            ax[1].cla()
+            # plot the results
+            ax[1].set_title(f"End-Effector reached target at episode {episode}")
+            ax[1].plot(workspace[0], workspace[1], "mo", markersize=0.01)
+            ax[1].plot(target[0], target[1], "-r*")
+            ax[1].plot(ef[0, 0], ef[1, 0], "go")
+            ax[1].plot(ef[0], ef[1], "o", markersize=1)
+            ax[1].legend(["workspace", "target", "starting point", "end effector"])
+            plt.show()
+            break

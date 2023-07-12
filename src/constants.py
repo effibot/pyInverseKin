@@ -27,10 +27,8 @@ g = -9.81
 NAME = "2 DoF Planar Robot"
 
 # Working Range (in radians)
-WORKING_RANGE = np.array(
-    [[0, 2 * np.pi], [-5 * np.pi / 6, 5 * np.pi / 6]], dtype=np.float64
-)
-WORKING_VELOCITIES = np.pi / 180 * np.array([[-1, 1], [-1, 1]], dtype=np.float64)
+WORKING_RANGE = np.array([[-np.pi, np.pi], [-5 * np.pi / 6, 5 * np.pi / 6]], dtype=np.float64)
+WORKING_VELOCITIES = np.pi * np.array([[-1, 1], [-1, 1]], dtype=np.float64)
 # Screen Size
 WIDTH, HEIGHT = 640, 480
 
@@ -38,7 +36,7 @@ WIDTH, HEIGHT = 640, 480
 START = v(WIDTH // 2, HEIGHT // 2)
 
 # Number of features
-NUM_FEATURES = 4096
+NUM_FEATURES = 1024
 
 # Number of actions
 NUM_ACTIONS = 9
@@ -54,12 +52,12 @@ def _to_zero(vector) -> v:
 
 # Environment Constants
 ALPHA = 0.5
-GAMMA = 1
+GAMMA = 0.5
 SIGMA = 1e-2
-EPSILON = 5e-1
-NUM_EPISODES = int(1e4)
+EPSILON = 1e-3
+NUM_EPISODES = int(1e5)
 TIME_STEP = 1e-3  # time.Clock().tick(60) / 1e3
-MAX_STEPS = int(1e4)
+MAX_STEPS = int(2e3)
 init_cond = [
     np.asarray(
         [

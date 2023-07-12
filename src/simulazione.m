@@ -2,85 +2,85 @@ clear
 close all
 clc
 %%
-syms q1(t) q2(t) l1 l2 m1 m2 t1 t2 c1(t) c2(t) c12(t) s1(t) s2(t) s12(t) g x1 x2 x3 x4 x5 x6
-assume(m1, 'real')
-assumeAlso(m1 > 0)
-assume(l1, 'real')
-assumeAlso(l1 > 0)
-assume(m2, 'real')
-assumeAlso(m2 > 0)
-assume(l2, 'real')
-assumeAlso(l2 > 0)
-assume(g > 0)
-e_x = [1, 0];
-e_y = [0, 1];
-c1(t) = cos(q1);
-c2(t) = cos(q2);
-c12(t) = cos(q1+q2);
-s1(t) = sin(q1);
-s2(t) = sin(q2);
-s12(t) = sin(q1+q2);
-%
-P01 = [l1*c1
-          l1*s1]
-
-P02 = [l1*cos(q1)+l2*cos(q1+q2)
-          l1*sin(q1)+l2*sin(q1+q2)]
-%
-v1 = diff(P01,t);
-v2 = diff(P02,t);
-v1_sq = transpose(v1)*v1
-v2_sq = transpose(v2)*v2
-%
-k1 = simplify(1/2*m1*v1_sq);
-k2 = simplify(1/2*m2*v2_sq);
-K = simplify(k1 + k2)
-%
-u1 = -m1*g*e_y*P01;
-u2 = -m2*g*e_y*P02;
-U = u1+u2
-%
-f = eye(2);
-F = 1/2*[diff(q1,t), diff(q2,t)]*f*[diff(q1,t); diff(q2,t)]
-%
-L = K - U;
-dLdq = [diff(L, q1)
-        diff(L, q2)];
-dLdqp = [diff(L, diff(q1))
-         diff(L, diff(q2))];
-ddt_dLdqp = diff(dLdqp, t);
-dFdqp = [diff(F, diff(q1))
-         diff(F, diff(q2))];
-%
-eq = ddt_dLdqp - dLdq - [t1; t2] + dFdqp;
-eq = eq(t);
-eq = subs(eq, diff(diff(q1,t),t), x5);
-eq = subs(eq, diff(diff(q2,t),t), x6);
-eq = subs(eq, diff(q1,t), x3);
-eq = subs(eq, diff(q2,t), x4);
-eq = subs(eq, q1, x1);
-eq = subs(eq, q2, x2);
-eq = simplify(eq);
-eq1 = eq(1);
-eq2 = eq(2);
-sols = solve([eq1 eq2], [x5 x6], 'ReturnConditions',true);
-x5_kuf = sols.x5
-x6_kuf = sols.x6
-%
-eq = ddt_dLdqp - dLdq - [t1; t2];
-eq = eq(t);
-eq = subs(eq, diff(diff(q1,t),t), x5);
-eq = subs(eq, diff(diff(q2,t),t), x6);
-eq = subs(eq, diff(q1,t), x3);
-eq = subs(eq, diff(q2,t), x4);
-eq = subs(eq, q1, x1);
-eq = subs(eq, q2, x2);
-eq = simplify(eq);
-eq1 = eq(1);
-eq2 = eq(2);
-sols = solve([eq1 eq2], [x5 x6], 'ReturnConditions',true);
-x5_ku = simplify(sols.x5)
-x6_ku = simplify(sols.x6)
+% syms q1(t) q2(t) l1 l2 m1 m2 t1 t2 c1(t) c2(t) c12(t) s1(t) s2(t) s12(t) g x1 x2 x3 x4 x5 x6
+% assume(m1, 'real')
+% assumeAlso(m1 > 0)
+% assume(l1, 'real')
+% assumeAlso(l1 > 0)
+% assume(m2, 'real')
+% assumeAlso(m2 > 0)
+% assume(l2, 'real')
+% assumeAlso(l2 > 0)
+% assume(g > 0)
+% e_x = [1, 0];
+% e_y = [0, 1];
+% c1(t) = cos(q1);
+% c2(t) = cos(q2);
+% c12(t) = cos(q1+q2);
+% s1(t) = sin(q1);
+% s2(t) = sin(q2);
+% s12(t) = sin(q1+q2);
+% %
+% P01 = [l1*c1
+%           l1*s1]
+% 
+% P02 = [l1*cos(q1)+l2*cos(q1+q2)
+%           l1*sin(q1)+l2*sin(q1+q2)]
+% %
+% v1 = diff(P01,t);
+% v2 = diff(P02,t);
+% v1_sq = transpose(v1)*v1
+% v2_sq = transpose(v2)*v2
+% %
+% k1 = simplify(1/2*m1*v1_sq);
+% k2 = simplify(1/2*m2*v2_sq);
+% K = simplify(k1 + k2)
+% %
+% u1 = -m1*g*e_y*P01;
+% u2 = -m2*g*e_y*P02;
+% U = u1+u2
+% %
+% f = eye(2);
+% F = 1/2*[diff(q1,t), diff(q2,t)]*f*[diff(q1,t); diff(q2,t)]
+% %
+% L = K - U;
+% dLdq = [diff(L, q1)
+%         diff(L, q2)];
+% dLdqp = [diff(L, diff(q1))
+%          diff(L, diff(q2))];
+% ddt_dLdqp = diff(dLdqp, t);
+% dFdqp = [diff(F, diff(q1))
+%          diff(F, diff(q2))];
+% %
+% eq = ddt_dLdqp - dLdq - [t1; t2] + dFdqp;
+% eq = eq(t);
+% eq = subs(eq, diff(diff(q1,t),t), x5);
+% eq = subs(eq, diff(diff(q2,t),t), x6);
+% eq = subs(eq, diff(q1,t), x3);
+% eq = subs(eq, diff(q2,t), x4);
+% eq = subs(eq, q1, x1);
+% eq = subs(eq, q2, x2);
+% eq = simplify(eq);
+% eq1 = eq(1);
+% eq2 = eq(2);
+% sols = solve([eq1 eq2], [x5 x6], 'ReturnConditions',true);
+% x5_kuf = sols.x5
+% x6_kuf = sols.x6
+% %
+% eq = ddt_dLdqp - dLdq - [t1; t2];
+% eq = eq(t);
+% eq = subs(eq, diff(diff(q1,t),t), x5);
+% eq = subs(eq, diff(diff(q2,t),t), x6);
+% eq = subs(eq, diff(q1,t), x3);
+% eq = subs(eq, diff(q2,t), x4);
+% eq = subs(eq, q1, x1);
+% eq = subs(eq, q2, x2);
+% eq = simplify(eq);
+% eq1 = eq(1);
+% eq2 = eq(2);
+% sols = solve([eq1 eq2], [x5 x6], 'ReturnConditions',true);
+% x5_ku = simplify(sols.x5)
+% x6_ku = simplify(sols.x6)
 %%
 ti = 0;
 tf = 60;
@@ -146,7 +146,7 @@ subplot(1,3,2)
 plot(time, res(1:length(time),1), '-b', time, res(1:length(time),2), '-r' )
 legend q1(t) q2(t)
 %%
-subplot(1,3,2)
+subplot(1,3,3)
 plot(time, res(1:length(time),3), '-b', time, res(1:length(time),4), '-r' )
 legend dq1(t) dq2(t)
 %%
