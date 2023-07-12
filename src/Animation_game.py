@@ -1,15 +1,24 @@
-import sys, pygame
-from Robot2 import Robot
+import pickle
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
-from pygame.math import Vector2 as v
-import constants as c
+import pygame
+from click import prompt
 from pygame import font
+from pygame.math import Vector2 as v
+
+import constants as c
+from agent import agent
+from Robot2 import Robot
 
 # CONSTANTS
 running = True
-target = c._to_zero(v(c.L1 / 3 * 2 + c.L2, 50))
+target = np.array([c.L1 / 3 * 2 + c.L2, 50])
+target_rendered = c._to_zero(v(c.L1 / 3 * 2 + c.L2, 50))
 frame_count = 0
+global best_results
+best_results = {'positions': [], 'actions': [], 'rewards': []}
 
 
 def make_axis(ws, ax=None, **plt_kwargs):
@@ -62,35 +71,46 @@ def make_axis(ws, ax=None, **plt_kwargs):
         [(c.WIDTH - 5, c.HEIGHT), (c.WIDTH, c.HEIGHT), (c.WIDTH, c.HEIGHT - 5)],
     )
     pygame.draw.polygon(screen, c.GREY, [(0, 0), (5, 0), (0, 5)])
-    pygame.draw.polygon(
-        screen, c.GREY, [(0, c.HEIGHT), (5, c.HEIGHT), (0, c.HEIGHT - 5)]
-    )
+    pygame.draw.polygon(screen, c.GREY, [(0, c.HEIGHT), (5, c.HEIGHT), (0, c.HEIGHT - 5)])
 
 
-def render(robot, ws):
+def render(robot):
     # reset the background
     screen.fill(c.WHITE)
     # draw the axis
     make_axis(screen)
-    # draw target
-    pygame.draw.circle(screen, c.BLACK, (int(target[0]), int(target[1])), 7.5)
-    pygame.draw.circle(screen, c.RED, (int(target[0]), int(target[1])), 5)
+    # draw target_rendered
+    pygame.draw.circle(screen, c.BLACK, (int(target_rendered[0]), int(target_rendered[1])), 7.5)
+    pygame.draw.circle(screen, c.RED, (int(target_rendered[0]), int(target_rendered[1])), 5)
     # draw the robot
     robot.render(screen, True)
-    robot.set_joint_angles(env.agent.position_history[frame_count])
-    #print(f"q: {env.agent.position_history[frame_count]}\t step {frame_count}")
+    robot.set_joint_angles(best_results['positions'][frame_count])
     pygame.display.flip()
 
 
-from Environment import Environ
 import threading
 
+from Environment import Environ
 
-def learn(env):
-    env.SARSA()
+
+def learn(load_params=False):
+    if not load_params:
+        env = Environ(agent(target))
+        env.SARSA_learning()
+        env.agent.play(env)
+        
+    else:
+        with open('weights.pkl', 'rb') as f:
+            with open('iht.pkl', 'rb') as g:
+                agent = agent(target, Environ())
+                agent.load_policy(pickle.load(f), pickle.load(g))
+                agent.play()
 
 
 if __name__ == "__main__":
+    learner = threading.Thread(target=learn, args=(False,))
+    learner.start()
+    learner.join()
     pygame.init()
     size = c.WIDTH, c.HEIGHT
     flags = pygame.DOUBLEBUF
@@ -99,19 +119,19 @@ if __name__ == "__main__":
     center = np.array(surface.center)
     clock = pygame.time.Clock()
     wr = c.WORKING_RANGE
-    # arm = Robot("2 DoF Planar Robot", l1, l2, working_range)
     arm = Robot(c.NAME, c.L1, c.L2, working_range=wr, center=center)
-    # arm = Robot(c.NAME, c.L1, c.L2, working_range=wr)
-    env = Environ(target)
     n = 100
     ws = arm.generate_ws_curves(n)
-    arm.set_target(target)
-    env.get_info()
-    learner = threading.Thread(target=learn, args=(env,))
-    learner.start()
-    learner.join()
-    print("Learning finished")
     while running:
+        if frame_count == len(best_results['positions']) - 1:
+            prompt = input(
+                'Goal reached! Press Enter to exit. \n'
+                + 'If you want to see the animation again, press r and then Enter.'
+            )
+        if prompt == '':
+            running = False
+        elif prompt == 'r':
+            frame_count = 0
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
@@ -120,7 +140,5 @@ if __name__ == "__main__":
                     running = False
         render(arm, ws)
         clock.tick(60)
-        frame_count = (
-            frame_count + 1 if frame_count < len(env.agent.position_history) - 1 else 0
-        )
+        frame_count += 1
     pygame.quit()

@@ -1,19 +1,15 @@
-from math import pi
-import re
-from sqlite3 import adapt
-
-from matplotlib import markers
 import constants as c
 import numpy as np
 from numpy import ndarray, sin, cos
 from numpy.linalg import norm
 from tiles3 import IHT, tiles
-import pickle
 
+#! To test unseeded agent, comment the following line
 np.random.seed(42)
 
+
 class agent(object):
-    def __init__(self, target):
+    def __init__(self, target, env=None):
         self.constants = {"l1": c.L1, "l2": c.L2, "m1": c.M1, "m2": c.M2, "g": c.g}
         self.is_sat = True
         self.state = np.zeros((1, 4))
@@ -36,21 +32,39 @@ class agent(object):
         self.position_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS, 2))
         self.target: ndarray = target
         self.achieved_target = False
+        self.ws = self.generate_ws_curves()
+        self.env = env
 
     def h_q(self, q1, q2):
+        """Compute the forward kinematics of the robot.
+
+        Args:
+            q1: The angle of the first joint. Rad.
+            q2: The angle of the second joint. Rad.
+
+        Returns:
+            A tuple containing the x and y coordinates of the end effector.
+        """
         x = c.L1 * cos(q1) + c.L2 * cos(q1 + q2)
         y = c.L1 * sin(q1) + c.L2 * sin(q1 + q2)
         return np.asarray([x, y])
 
     def get_p(self):
+        """Compute the forward kinematics of the robot at the current state.
+
+        Returns:
+            ndarray: The x and y coordinates of the end effector.
+        """
         return self.h_q(self.state[0], self.state[1])
 
+    # Getter methods
     def get_state(self):
         return self.state
 
     def get_action(self, index):
         return self.actions[index]
 
+    # update histories methods
     def update_pos_history(self, episode, step):
         self.position_history[episode, step, :] = self.get_state()[0:2]
 
@@ -67,14 +81,22 @@ class agent(object):
             "reward": self.reward_history,
         }
 
+    def update_histories(self, episode, step, action, reward):
+        # update the position history for the current episode at the current step
+        self.update_pos_history(episode, step)
+        # update the reward history for the current episode until the current step
+        self.update_reward_history(episode, step, reward)
+        # update the actions history for the current episode at the current step
+        self.update_actions_history(episode, step, action)
+
+    # reset the agent state
     def reset(self):
-        ws = self.generate_ws_curves()
-        i, j = np.random.randint(0, ws[0].shape[0]), np.random.randint(0, ws[1].shape[0])
+        i, j = np.random.randint(0, self.ws[0].shape[0]), np.random.randint(0, self.ws[1].shape[0])
         # randomize initial joint angles
         self.state = np.asarray(
             [
-                ws[0][i],  # q1
-                ws[1][j],  # q2
+                self.ws[0][i],  # q1
+                self.ws[1][j],  # q2
                 # velocities are set to zero when resetting
                 0,
                 0,
@@ -137,8 +159,7 @@ class agent(object):
         """
         Checks if the current state is terminal.
         """
-        p = self.h_q(self.state[0], self.state[1])
-        if norm(p - self.target) <= c.GAMMA:
+        if self.compute_distance(self.state) <= c.GAMMA:
             self.achieved_target = True
             return True
         return False
@@ -257,123 +278,43 @@ class agent(object):
         reward = self.get_reward(state, episode)
         return next_state, reward
 
-    def update_histories(self, episode, step, action, reward):
-        # update the position history for the current episode at the current step
-        self.update_pos_history(episode, step)
-        # update the reward history for the current episode until the current step
-        self.update_reward_history(episode, step, reward)
-        # update the actions history for the current episode at the current step
-        self.update_actions_history(episode, step, action)
-
-
-class ws_env:
-    def __init__(self) -> None:
-        self.iht = IHT(c.NUM_FEATURES)
-        self.W = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))
-        # self.W = np.random.rand(c.NUM_ACTIONS, c.NUM_FEATURES)
-        self.actions: np.ndarray = [1e5, 1e4] * np.asarray(
-            [
-                [-1, -1],
-                [-1, 0],
-                [-1, 1],
-                [0, -1],
-                [0, 0],
-                [0, 1],
-                [1, -1],
-                [1, 0],
-                [1, 1],
-            ]
-        )
-
-    def get_active_tiles(self, state, action):
-        # get the indices of the active tiles
-
-        # extract the state variables
-        q1 = state[0]
-        q2 = state[1]
-        q1_d = state[2]
-        q2_d = state[3]
-        # define the scaling factor
-        q1_sf = c.NUM_TILINGS * q1 / (c.WORKING_RANGE[0, 1] - c.WORKING_RANGE[0, 0])
-        q2_sf = c.NUM_TILINGS * q2 / (c.WORKING_RANGE[1, 1] - c.WORKING_RANGE[1, 0])
-        q1_d_sf = c.NUM_TILINGS * q1_d / (c.WORKING_VELOCITIES[0, 1] - c.WORKING_VELOCITIES[0, 0])
-        q2_d_sf = c.NUM_TILINGS * q2_d / (c.WORKING_VELOCITIES[1, 1] - c.WORKING_VELOCITIES[1, 0])
-        # get the indices of the active tiles
-        active_tiles = tiles(self.iht, c.NUM_TILINGS, [q1_sf, q2_sf, q1_d_sf, q2_d_sf], action)
-        return active_tiles
-
-    def epsGreedy(self, state, init=True):
-        if np.random.rand() < c.EPSILON or init:
-            return self.actions[np.random.randint(0, c.NUM_ACTIONS)]
-        else:
-            q_values = np.zeros((c.NUM_ACTIONS, 1))
-            for i in range(c.NUM_ACTIONS):
-                # get the active tiles
-                active_tiles = self.get_active_tiles(state, self.actions[i])
-                # compute the value of the current state-action pair
-                q_values[i] = np.sum(self.W[i, active_tiles])
-        return self.actions[np.argmax(q_values)]
-
-    def step_update(self, state, action, reward, next_state, next_action):
-        # get active tiles
-        active_tiles = self.get_active_tiles(state, action)
-        # compute the value of the current state-action pair
-        a_i = np.where((self.actions == action).all(axis=1))[0][0]
-        q_value = np.sum(self.W[a_i, active_tiles])
-        # get active tiles for the next state
-        next_active_tiles = self.get_active_tiles(next_state, next_action)
-        # compute the value of the next state-action pair
-        a_i_next = np.where((self.actions == next_action).all(axis=1))[0][0]
-        next_q_value = np.sum(self.W[a_i_next, next_active_tiles])
-        # update the weights
-        delta = reward + c.GAMMA * next_q_value - q_value
-        self.W[a_i, active_tiles] += c.ALPHA * delta
-
-    def episode_loop(self, agent, episode):
-        # reset the agent
-        agent.reset()
-        # reset the environment
-        self.reset()
-        # get the initial state
-        state = agent.get_state()
-        # get the initial action
-        action = self.epsGreedy(state)
-        # loop until the episode is done
-        for step in range(c.MAX_STEPS):
-            # get the next state and reward
-            next_state, reward = agent.get_state_reward_transition(state, action, episode)
-            # get the next action
-            next_action = self.epsGreedy(next_state, False)
-            # update the weights
-            self.step_update(state, action, reward, next_state, next_action)
-            # update agent's histories
-            agent.update_histories(episode, step, action, reward)
-            # checks if the episode is done
-            if agent.is_done():
-                print(f"Episode {episode} finished in {step} steps")
-                # save the weights and the iht on disk
-                with open(f"weights_{episode}.pkl", "wb") as f:
-                    pickle.dump(self.W, f)
-                with open(f"iht_{episode}.pkl", "wb") as f:
-                    pickle.dump(self.iht, f)
+    def load_policy(self, W, iht):
+        self.env.iht = iht
+        self.env.W = W
+        
+    def play(self, env=None):
+        # assign the environment just in case we are not loading the policy
+        if env is not None:
+            self.env = env
+        # reset the agent state and the target reached flag
+        self.state = c.init_conditions
+        self.achieved_target = False
+        # take the first action as [0,0]
+        action = [0, 0]
+        # loop until the target is reached or the maximum number of steps is reached
+        while not self.achieved_target:
+            # compute the active tiles
+            active_tiles = self.env.get_active_tiles(self.get_state(), action)
+            # compute the Q values for the current state
+            Q = np.sum(self.env.W[:, active_tiles], axis=1)
+            # select the action
+            action = self.actions[np.argmax(Q)]
+            # compute the next state and the reward
+            next_state, reward = self.get_state_reward_transition(self.get_state(), action, 0)
+            # update the histories
+            self.update_histories(0, 0, action, reward)
+            # update the state
+            self.state = next_state
+            # check if the target is reached
+            if self.is_done():
                 break
-            elif step == c.MAX_STEPS - 1:
-                print(f"Episode {episode} not finished, increasing penalty")
-                # increase the penalty of 10% - what is zero in the beginning will remain zero
-                self.W *= 1.5
-            # update the state and action
-            state = next_state
-            action = next_action
+        
 
-    def reset(self):
-        # self.iht = IHT(c.NUM_FEATURES)
-        # self.W = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))
-        pass
-
-
-import matplotlib.pyplot as plt
+#! Run the following lines to test the agent
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    from Environment import environ as ws_env
     # initialize target and agent
     target = np.asarray([c.L1 / 3 * 2 + c.L2, 50])
     arm = agent(target)
@@ -383,7 +324,6 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(1, 2, figsize=(3, 7))
     ax[0].set_title("visited q1-q2 pairs globally")
     ax[1].axis("equal")
-
     # start learning
     for episode in range(c.NUM_EPISODES):
         print(f"Episode {episode}")
