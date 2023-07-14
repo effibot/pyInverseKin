@@ -1,19 +1,25 @@
-import constants as c
+import matplotlib.pyplot as plt
 import numpy as np
-from numpy import ndarray, sin, cos
+from numpy import cos, ndarray, sin
 from numpy.linalg import norm
+
+import constants as c
 from tiles3 import IHT, tiles
 
 #! To test unseeded agent, comment the following line
-np.random.seed(42)
+# np.random.seed(42)
 
 
 class agent(object):
-    def __init__(self, target, env=None):
+    def __init__(self, target, env=None, exploring_start=False):
         self.constants = {"l1": c.L1, "l2": c.L2, "m1": c.M1, "m2": c.M2, "g": c.g}
         self.is_sat = True
-        self.state = np.zeros((1, 4))
+        self.target: ndarray = target
+        self.achieved_target = False
+        self.exploring_start = exploring_start
+        self.state = c.init_cond if not exploring_start else self.reset()
         self.time_step = c.TIME_STEP
+        self.env = env
         self.actions: np.ndarray = [1e5, 1e4] * np.asarray(
             (
                 [-1, -1],
@@ -27,14 +33,20 @@ class agent(object):
                 [1, 1],
             )
         )
-        self.actions_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS, 2))
-        self.reward_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS))
-        self.position_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS, 2))
-        self.target: ndarray = target
-        self.achieved_target = False
+        self.actions_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS + 1, 2))
+        self.reward_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS + 1))
+        self.position_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS + 1, 2))
         self.ws = self.generate_ws_curves()
-        self.env = env
 
+    def set_state(self, state):
+        self.state = state
+    
+    def set_env(self, env):
+        self.env = env
+    
+    def get_env(self):
+        return self.env
+    
     def h_q(self, q1, q2):
         """Compute the forward kinematics of the robot.
 
@@ -72,7 +84,7 @@ class agent(object):
         self.actions_history[episode, step] = action
 
     def update_reward_history(self, episode, step, reward):
-        self.reward_history[episode, step] += reward
+        self.reward_history[episode, step] = reward
 
     def get_histories(self):
         return {
@@ -91,17 +103,26 @@ class agent(object):
 
     # reset the agent state
     def reset(self):
-        i, j = np.random.randint(0, self.ws[0].shape[0]), np.random.randint(0, self.ws[1].shape[0])
-        # randomize initial joint angles
-        self.state = np.asarray(
-            [
-                self.ws[0][i],  # q1
-                self.ws[1][j],  # q2
-                # velocities are set to zero when resetting
-                0,
-                0,
-            ]
-        )
+        # if self.exploring_start:
+        #    # randomize initial joint angles
+        #    while True:
+        #        q1 = np.random.uniform(c.WORKING_RANGE[0, 0], c.WORKING_RANGE[0, 1])
+        #        q2 = np.random.uniform(c.WORKING_RANGE[1, 0], c.WORKING_RANGE[1, 1])
+        #        if (self.h_q(q1, q2) != self.target).all():
+        #            break
+        #    self.state = np.asarray(
+        #        [
+        #            q1,  # q1
+        #            q2,  # q2
+        #            # velocities are set to zero when resetting
+        #            0,
+        #            0,
+        #        ],
+        #        dtype=np.float64,
+        #    )
+        # else:
+        self.state = c.init_cond
+        return self.state
 
     def generate_ws_curves(self, n=1000):
         """
@@ -146,12 +167,12 @@ class agent(object):
         # compute the distance between the end effector and the target
         covered_distance = self.compute_distance(state)
         # compute the reward
-        reward = covered_distance**2
-        # get the last assigned reward index for the current episode
-        last_index = np.nonzero(self.reward_history[episode])[0]
-        if last_index.size > 0:
-            if -np.log(reward) == self.reward_history[episode, last_index[-1]]:
-                reward *= 1.1
+        reward = -(covered_distance**2)
+        # get last reward
+        nonzero_index = np.nonzero(self.reward_history[episode])[0]
+        if len(nonzero_index) > 0:
+            if reward == self.reward_history[episode, nonzero_index[-1]]:
+                reward *= 1.5
         # return the reward
         return reward
 
@@ -255,7 +276,7 @@ class agent(object):
         self.state += self.time_step * (k1 + 2 * k2 + 2 * k3 + k4) / 6
         # saturate
         if self.is_sat:
-            # self.state[0] = np.clip(self.state[0], c.WORKING_RANGE[0, 0], c.WORKING_RANGE[0, 1])
+            #self.state[0] = np.clip(self.state[0], c.WORKING_RANGE[0, 0], c.WORKING_RANGE[0, 1])
             self.state[1] = np.clip(self.state[1], c.WORKING_RANGE[1, 0], c.WORKING_RANGE[1, 1])
             self.state[2] = np.clip(self.state[2], c.WORKING_VELOCITIES[0, 0], c.WORKING_VELOCITIES[0, 1])
             self.state[3] = np.clip(self.state[3], c.WORKING_VELOCITIES[1, 0], c.WORKING_VELOCITIES[1, 1])
@@ -281,17 +302,18 @@ class agent(object):
     def load_policy(self, W, iht):
         self.env.iht = iht
         self.env.W = W
-        
+
     def play(self, env=None):
         # assign the environment just in case we are not loading the policy
         if env is not None:
             self.env = env
         # reset the agent state and the target reached flag
-        self.state = c.init_conditions
+        self.state = c.init_cond
         self.achieved_target = False
         # take the first action as [0,0]
         action = [0, 0]
         # loop until the target is reached or the maximum number of steps is reached
+        step = 0
         while not self.achieved_target:
             # compute the active tiles
             active_tiles = self.env.get_active_tiles(self.get_state(), action)
@@ -307,17 +329,65 @@ class agent(object):
             self.state = next_state
             # check if the target is reached
             if self.is_done():
+                print(f"Done")
                 break
-        
+            else:
+                step += 1
+                print('\r', f"Playing ({step}) ...", end=" ", flush=True)
+
+    def create_arm_plot(self):
+        # get the last episode index
+        last_episode = np.nonzero(self.reward_history)[0][-1]
+        # Plot setup
+        fig, ax = plt.subplots(1, 2, figsize=(3, 7))
+        ax[0].set_title("visited q1-q2 pairs globally")
+        ax[1].axis("equal")
+        workspace = self.generate_ws_curves()
+        for episode in range(last_episode):
+            pos = self.get_histories()["position"][episode]
+            pos = pos[pos[:, 0] != 0]
+            ax[0].plot(pos[:, 0], pos[:, 1], "o")
+
+            ax[1].cla()
+            ef = self.h_q(pos[:, 0], pos[:, 1])
+
+            # Plot the results
+            ax[1].set_title(f"End-Effector trajectory at episode {episode}")
+            ax[1].plot(workspace[0], workspace[1], "mo", markersize=0.01)
+            ax[1].plot(target[0], target[1], "-r*")
+            ax[1].plot(ef[0, 0], ef[1, 0], "go")
+            ax[1].plot(ef[0], ef[1], "o", markersize=1)
+            ax[1].legend(["workspace", "target", "starting point", "end effector"])
+
+        return fig, ax
+
+    def fwd_kin(self, q1, q2):
+        """Compute the forward kinematics of the robot.
+
+        Args:
+            q1: The angle of the first joint. Rad.
+            q2: The angle of the second joint. Rad.
+
+        Returns:
+            A tuple containing the x and y coordinates of the end effector.
+        """
+        x1 = c.L1 * cos(q1)
+        y1 = c.L1 * sin(q1)
+        x2 = c.L1 * cos(q1) + c.L2 * cos(q1 + q2)
+        y2 = c.L1 * sin(q1) + c.L2 * sin(q1 + q2)
+        return np.asarray([x1, y1, x2, y2])
+
 
 #! Run the following lines to test the agent
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+
     from Environment import environ as ws_env
+
     # initialize target and agent
     target = np.asarray([c.L1 / 3 * 2 + c.L2, 50])
-    arm = agent(target)
+    arm = agent(target, exploring_start=False)
     env = ws_env()
     workspace = arm.generate_ws_curves()
     # plot setup
@@ -327,21 +397,25 @@ if __name__ == "__main__":
     # start learning
     for episode in range(c.NUM_EPISODES):
         print(f"Episode {episode}")
+        x1, y1, x2, y2 = arm.fwd_kin(arm.state[0], arm.state[1])
         env.episode_loop(arm, episode)
         pos = arm.get_histories()["position"][episode]
-        pos = pos[pos[:, 0] != 0]
+        index = np.logical_and(pos[:, 0] != 0, pos[:, 1] != 0)
+        index[0] = True
+        pos = pos[index]
         ax[0].plot(pos[:, 0], pos[:, 1], "o")
         ef = arm.h_q(pos[:, 0], pos[:, 1])
-        if episode % 5 == 0:
+        if episode % 1 == 0:
             # clear the axes of the trajectory plot
             ax[1].cla()
             # plot the results
             ax[1].set_title(f"End-Effector trajectory at episode {episode}")
             ax[1].plot(workspace[0], workspace[1], "mo", markersize=0.01)
             ax[1].plot(target[0], target[1], "-r*")
+            ax[1].plot([0, x1, x2], [0, y1, y2], "k--", linewidth=1.5)
             ax[1].plot(ef[0, 0], ef[1, 0], "go")
             ax[1].plot(ef[0], ef[1], "o", markersize=1)
-            ax[1].legend(["workspace", "target", "starting point", "end effector"])
+            ax[1].legend(["workspace", "target", "arm", "starting point", "trajectory"])
             plt.show(block=False)
             plt.pause(0.1)
         if arm.achieved_target:
@@ -352,8 +426,9 @@ if __name__ == "__main__":
             ax[1].set_title(f"End-Effector reached target at episode {episode}")
             ax[1].plot(workspace[0], workspace[1], "mo", markersize=0.01)
             ax[1].plot(target[0], target[1], "-r*")
+            ax[1].plot([0, x1, x2], [0, y1, y2], "k--", linewidth=1.5)
             ax[1].plot(ef[0, 0], ef[1, 0], "go")
             ax[1].plot(ef[0], ef[1], "o", markersize=1)
-            ax[1].legend(["workspace", "target", "starting point", "end effector"])
+            ax[1].legend(["workspace", "target", "arm", "starting point", "trajectory"])
             plt.show()
             break

@@ -11,19 +11,6 @@ class environ(object):
         self.iht = IHT(c.NUM_FEATURES)
         # self.W = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))
         self.W = np.random.rand(c.NUM_ACTIONS, c.NUM_FEATURES)
-        self.actions: np.ndarray = [1e5, 1e4] * np.asarray(
-            [
-                [-1, -1],
-                [-1, 0],
-                [-1, 1],
-                [0, -1],
-                [0, 0],
-                [0, 1],
-                [1, -1],
-                [1, 0],
-                [1, 1],
-            ]
-        )
         self.agent = agent
         self.best_results = {'positions': [], 'actions': [], 'rewards': []}
 
@@ -66,7 +53,7 @@ class environ(object):
         :return: an action.
         """
         if np.random.rand() < c.EPSILON or init:
-            return self.actions[np.random.randint(0, c.NUM_ACTIONS)]
+            return self.agent.actions[np.random.randint(0, c.NUM_ACTIONS)]
         else:
             q_values = np.zeros((c.NUM_ACTIONS, 1))
             for i in range(c.NUM_ACTIONS):
@@ -103,7 +90,7 @@ class environ(object):
         a_i_next = np.where((self.actions == next_action).all(axis=1))[0][0]
         next_q_value = np.sum(self.W[a_i_next, next_active_tiles])
         # update the weights
-        delta = reward + c.GAMMA * next_q_value - q_value
+        delta = reward + (c.GAMMA * next_q_value) - q_value
         self.W[a_i, active_tiles] += c.ALPHA * delta
 
     def episode_loop(self, agent, episode):
@@ -123,36 +110,42 @@ class environ(object):
         agent.reset()
         # get the initial state
         state = agent.get_state()
+        print(f"The state is {state}")
+        # fill the first row of the histories
+        agent.update_histories(episode, 0, [0,0], 0)
         # get the initial action
         action = self.epsGreedy(state)
         # loop until the episode is done
-        for step in range(c.MAX_STEPS):
+        for step in range(1,c.MAX_STEPS+1):
             # get the next state and reward
             next_state, reward = agent.get_state_reward_transition(state, action, episode)
             # get the next action
             next_action = self.epsGreedy(next_state, False)
             # update the weights
             self.step_update(state, action, reward, next_state, next_action)
+            # update the state and action
+            state = next_state
+            action = next_action
             # update agent's histories
             agent.update_histories(episode, step, action, reward)
             # checks if the episode is done
             if agent.is_done():
                 print(f"Episode {episode} finished in {step} steps")
                 # save the weights and the iht on disk
-                with open("../data/weights.pkl", "wb") as f:
+                with open("data/weights.pkl", "wb") as f:
                     pickle.dump(self.W, f)
-                with open("../data/iht.pkl", "wb") as f:
+                with open("data/iht.pkl", "wb") as f:
                     pickle.dump(self.iht, f)
                 print(f"Episode {episode} weights and iht saved")
                 break
             elif step == c.MAX_STEPS - 1:
-                print(f"Episode {episode} not finished, increasing penalty")
+                print(
+                    f"not finished after {step+1} steps, increasing penalty."
+                    + f" The cumulative reward is {np.sum(agent.reward_history[episode]):.2f}"
+                )
                 # increase the penalty of 10% - what is zero in the beginning will remain zero
                 self.W *= 1.5
-            # update the state and action
-            state = next_state
-            action = next_action
-
+           
     def SARSA_learning(self):
         """
         The function `SARSA_learning` implements the SARSA learning algorithm. It runs a loop that
@@ -161,13 +154,19 @@ class environ(object):
         assert self.agent is not None, "Agent not initialized"
         print("Learging started")
         for episode in range(c.NUM_EPISODES):
-            print('\r', f"Episode: {episode}", end='', flush=True)
+            print('\r', f"Episode: {episode} started...\t", end='', flush=True)
             self.episode_loop(self.agent, episode)
+            if self.agent.is_done():
+                break
         print('\n', "Learning finished")
         # fill the best results dictionary
         self.best_results['positions'] = self.agent.position_history[episode]
-        self.best_results['actions'] = self.agent.action_history[episode]
+        self.best_results['actions'] = self.agent.actions_history[episode]
         self.best_results['rewards'] = self.agent.reward_history[episode]
+        # save the best results on disk
+        with open("data/best_results.pkl", "wb") as f:
+            print("Saving best results on disk")
+            pickle.dump(self.best_results, f)
 
     def get_best_results(self):
         return self.best_results
