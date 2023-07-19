@@ -2,7 +2,7 @@ clear
 close all
 clc
 %%
-% syms q1(t) q2(t) l1 l2 m1 m2 t1 t2 c1(t) c2(t) c12(t) s1(t) s2(t) s12(t) g x1 x2 x3 x4 x5 x6
+% syms q1(t) q2(t) l1 l2 m1 m2 t1 t2 c1(t) c2(t) c12(t) s1(t) s2(t) s12(t) g x1 x2 x3 x4 x5 x6 f1 f2
 % assume(m1, 'real')
 % assumeAlso(m1 > 0)
 % assume(l1, 'real')
@@ -20,28 +20,28 @@ clc
 % s1(t) = sin(q1);
 % s2(t) = sin(q2);
 % s12(t) = sin(q1+q2);
-% %
+%%
 % P01 = [l1*c1
-%           l1*s1]
+%           l1*s1];
 % 
 % P02 = [l1*cos(q1)+l2*cos(q1+q2)
-%           l1*sin(q1)+l2*sin(q1+q2)]
-% %
+%           l1*sin(q1)+l2*sin(q1+q2)];
+%%
 % v1 = diff(P01,t);
 % v2 = diff(P02,t);
-% v1_sq = transpose(v1)*v1
-% v2_sq = transpose(v2)*v2
+% v1_sq = transpose(v1)*v1;
+% v2_sq = transpose(v2)*v2;
 % %
 % k1 = simplify(1/2*m1*v1_sq);
 % k2 = simplify(1/2*m2*v2_sq);
-% K = simplify(k1 + k2)
-% %
+% K = simplify(k1 + k2);
+%%
 % u1 = -m1*g*e_y*P01;
 % u2 = -m2*g*e_y*P02;
-% U = u1+u2
-% %
-% f = eye(2);
-% F = 1/2*[diff(q1,t), diff(q2,t)]*f*[diff(q1,t); diff(q2,t)]
+% U = u1+u2;
+%%
+% f = [f1 0; 0 f2];
+% F = 1/2*[diff(q1,t), diff(q2,t)]*f*[diff(q1,t); diff(q2,t)];
 % %
 % L = K - U;
 % dLdq = [diff(L, q1)
@@ -51,7 +51,7 @@ clc
 % ddt_dLdqp = diff(dLdqp, t);
 % dFdqp = [diff(F, diff(q1))
 %          diff(F, diff(q2))];
-% %
+%%
 % eq = ddt_dLdqp - dLdq - [t1; t2] + dFdqp;
 % eq = eq(t);
 % eq = subs(eq, diff(diff(q1,t),t), x5);
@@ -66,7 +66,7 @@ clc
 % sols = solve([eq1 eq2], [x5 x6], 'ReturnConditions',true);
 % x5_kuf = sols.x5
 % x6_kuf = sols.x6
-% %
+%%
 % eq = ddt_dLdqp - dLdq - [t1; t2];
 % eq = eq(t);
 % eq = subs(eq, diff(diff(q1,t),t), x5);

@@ -13,22 +13,28 @@ GREY = 128, 128, 128
 WHITE = 255, 255, 255
 
 # Link lengths
-L1 = 80
-L2 = 70
+L1 = 0.3
+L2 = 0.2
 
 # Link Masses
-M1 = 2
-M2 = 1
+M1 = 1
+M2 = 0.7
 
 # Gravity
 g = -9.81
+
+# Friction
+f1 = 1
+f2 = 1
 
 # Robot Name
 NAME = "2 DoF Planar Robot"
 
 # Working Range (in radians)
-WORKING_RANGE = np.array([[0, 2 * np.pi], [-5 * np.pi / 6, 5 * np.pi / 6]], dtype=np.float64)
-WORKING_VELOCITIES = (180 / np.pi) * np.array([[-1, 1], [-1, 1]], dtype=np.float64)
+WORKING_RANGE = np.array([[-np.pi, np.pi], [-5 * np.pi / 6, 5 * np.pi / 6]], dtype=np.float64)
+WORKING_VELOCITIES =  60*np.pi/180*np.array([[-1, 1], [-1, 1]], dtype=np.float64)
+U1 = 7e1
+U2 = 2e1
 # Screen Size
 WIDTH, HEIGHT = 640, 480
 
@@ -42,10 +48,10 @@ NUM_FEATURES = 1024
 NUM_ACTIONS = 9
 
 # Number of Tiling
-NUM_TILINGS = 8
+NUM_TILINGS = 4
 
 # Target
-target = np.array([L1 / 3 * 2 + L2, 50])
+TARGET = np.array([L1 / 3 * 2 + L2 / 4, L1 / 3 * 2 + L2 / 4])
 
 
 def _to_zero(vector) -> v:
@@ -54,11 +60,13 @@ def _to_zero(vector) -> v:
 
 
 # Environment Constants
-ALPHA = 0.5
-GAMMA = 0.5
+ALPHA = 1/(10*NUM_TILINGS)
+GAMMA = 1
 SIGMA = 1e-2
-EPSILON = 1e-3
-NUM_EPISODES = int(1e5)
+EPS_START = 0.3
+EPS_DECAY = 2e-3
+NUM_EPISODES = int(2e3)
 TIME_STEP = 1e-3  # time.Clock().tick(60) / 1e3
-MAX_STEPS = int(2e3)
+MAX_STEPS = int(3.5e3)
 init_cond = np.asarray([-np.pi / 4, np.pi / 2, 0, 0], dtype=np.float64)
+R_SCALE = 1.1
