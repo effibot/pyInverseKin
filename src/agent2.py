@@ -1,10 +1,7 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from numpy import cos, ndarray, sin
-from numpy.linalg import norm
+from numpy import cos, sin
 
 import constants as c
-from tiles3 import IHT, tiles
 
 
 class agent:
