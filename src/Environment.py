@@ -1,26 +1,38 @@
+import enum
 import constants as c
 import numpy as np
+
 from tiles3 import IHT, tiles
-from agent2 import agent
+from agent import Agent
 from numpy.linalg import norm
 import pickle
+from tqdm import tqdm
+
+tqdm.monitor_interval = 0
 
 
 class environ(object):
     def __init__(self, agent=None, exploring_start=False):
-        self.agent: agent = agent
-        self.target: np.ndarray = c.TARGET
+        self.agent: Agent = agent
+        self.target: np.ndarray = np.concatenate((c.TARGET, np.zeros(2)))
         self.iht = IHT(c.NUM_FEATURES)
         self.exploring_start = exploring_start
-        # self.W = np.zeros((c.NUM_ACTIONS, c.NUM_FEATURES))
-        # self.W = np.random.rand(c.NUM_ACTIONS, c.NUM_FEATURES)
-        self.W = np.random.rand(c.NUM_FEATURES, 1)
+        self.features = np.zeros((c.NUM_FEATURES), np.int16)
+        self.W = np.random.rand(c.NUM_FEATURES)
         self.reward_scale = 1
         self.actions_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS, 2))
         self.reward_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS))
         self.position_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS, 2))
         self.vel_history = np.zeros((c.NUM_EPISODES, c.MAX_STEPS, 2))
         self.cost_history = np.zeros((c.NUM_EPISODES, 1))
+        self.scaling_factors = c.NUM_TILINGS / np.asarray(
+            [
+                c.WORKING_RANGE[0, 1] - c.WORKING_RANGE[0, 0],
+                c.WORKING_RANGE[1, 1] - c.WORKING_RANGE[1, 0],
+                c.WORKING_VELOCITIES[0, 1] - c.WORKING_VELOCITIES[0, 0],
+                c.WORKING_VELOCITIES[1, 1] - c.WORKING_VELOCITIES[1, 0],
+            ]
+        )
 
     def get_agent(self):
         return self.agent
@@ -74,27 +86,27 @@ class environ(object):
     def compute_distance(self, state):
         """Compute the distance between the end effector and the target."""
         p = self.agent.h_q(state[0], state[1])[2:]
-        return norm(p - self.target)
+        return norm(p - self.target[:2])
 
     def get_reward(self, state, episode):
         """
         Returns the reward for the current state.
         """
         # compute the distance between the end effector and the target
-        missing_distance = self.compute_distance(state)
+        # missing_distance = self.compute_distance(state)
         # residual_vel = norm(state[2:])
-        # compute the reward
-        if self.agent.get_achieved_target():
-            reward = missing_distance * self.get_r_scale()
-        else:
-            reward = missing_distance
+        reward = norm((state - self.target))
+        # reward = self.compute_distance(state)
+        ## compute the reward
+        # if self.agent.get_achieved_target():
+        #    reward = missing_distance * self.get_r_scale()
+        # else:
+        #    reward = missing_distance
         # get last reward
         nonzero_index = np.nonzero(self.reward_history[episode])[0]
         if len(nonzero_index) > 0:
             if reward >= abs(self.reward_history[episode, nonzero_index[-1]]):
-                reward = reward * 100
-            else:
-                reward = -reward
+                reward = reward * 1e3
         # return the reward
         return -reward
 
@@ -147,18 +159,20 @@ class environ(object):
         used as an input to the "tiles" function to determine the active tiles
         :return: the indices of the active tiles.
         """
-        # extract the state variables
-        q1 = state[0]
-        q2 = state[1]
-        q1_d = state[2]
-        q2_d = state[3]
-        # define the scaling factor
-        q1_sf = c.NUM_TILINGS * q1 / (c.WORKING_RANGE[0, 1] - c.WORKING_RANGE[0, 0])
-        q2_sf = c.NUM_TILINGS * q2 / (c.WORKING_RANGE[1, 1] - c.WORKING_RANGE[1, 0])
-        q1_d_sf = c.NUM_TILINGS * q1_d / (c.WORKING_VELOCITIES[0, 1] - c.WORKING_VELOCITIES[0, 0])
-        q2_d_sf = c.NUM_TILINGS * q2_d / (c.WORKING_VELOCITIES[1, 1] - c.WORKING_VELOCITIES[1, 0])
+        # active_tiles = self.coder[np.concatenate((state, action))]
         # get the indices of the active tiles
-        active_tiles = tiles(self.iht, c.NUM_TILINGS, [q1_sf, q2_sf, q1_d_sf, q2_d_sf], action)
+        active_tiles = tiles(
+            self.iht,
+            c.NUM_TILINGS,
+            np.array(state) * self.scaling_factors[:4],
+            # [
+            # state[0] * self.scaling_factors[0],
+            # state[1] * self.scaling_factors[1],
+            # state[2] * self.scaling_factors[2],
+            # state[3] * self.scaling_factors[3],
+            # ],
+            action,
+        )
         return active_tiles
 
     def get_features(self, state, action=[]):
@@ -172,8 +186,7 @@ class environ(object):
         used as an input to the "tiles" function to determine the active tiles
         :return: the features vector.
         """
-        # get the features vector
-        features = np.zeros((c.NUM_FEATURES, 1))
+        features = np.zeros((c.NUM_FEATURES), np.int8)
         features[self.get_active_tiles(state, action)] = 1
         return features
 
@@ -182,9 +195,6 @@ class environ(object):
 
     def set_weights(self, weights):
         self.W = weights
-
-    # def get_active_weights(self, action_index: int, active_tiles: list):
-    #    return self.W[action_index, active_tiles]
 
     def epsGreedy(self, state, episode):
         """The `epsGreedy` function implements an epsilon-greedy policy for selecting actions in a
@@ -199,18 +209,18 @@ class environ(object):
         :return: an action.
         """
         # get action with probability epsilon or if it is the first time
-        #
         if np.random.rand() <= self.computeEps(episode):
-            index = np.random.randint(0, c.NUM_ACTIONS)
-            return self.agent.get_selected_action(index)
-        else:
-            q_values = np.zeros((c.NUM_ACTIONS, 1))
-            for i in range(c.NUM_ACTIONS):
-                a = self.agent.get_selected_action(i)
-                q_values[i] = self.get_weights().T @ self.get_features(state, a)
-            # returns only the first occurrence of the maximum value
-            a_max = np.argmax(q_values)
-        return self.agent.get_selected_action(a_max)
+            return self.agent.get_random_action()  # Get a random action
+
+        # Compute Q-values for all actions
+        X = [self.get_features(state, self.agent.get_selected_action(i)) for i in range(c.NUM_ACTIONS)]
+        w = self.get_weights()
+
+        q_values = np.array([np.sum(w[x == 1]) for x in X])
+        a_max = np.argmax(q_values)
+
+        max_q_action = self.agent.get_selected_action(a_max)
+        return max_q_action
 
     def computeEps(self, episode):
         # if the agent hasn't achieved the target yet, return the initial epsilon value
@@ -236,25 +246,20 @@ class environ(object):
         :param next_action: The parameter "next_action" represents the action taken in the next state.
         It is used to compute the value of the next state-action pair in order to update the weights
         """
-        # get the features vector
+        # Pre-calculate common values
         x = self.get_features(state, action)
-        # get the current weights
         w = self.get_weights()
-        # compute the TD error
-        if is_terminal:
-            # if the episode is terminal, the next state is the same as the current state
-            delta = reward - w.T @ x
-        else:
-            # get the next state features vector
+        q = np.sum(w[x == 1])
+
+        if not is_terminal:
             x_next = self.get_features(next_state, next_action)
-            # compute actual and estimated q values
-            q = w.T @ x
-            q_next = w.T @ x_next
-            # define the error
+            q_next = np.sum(w[x_next == 1])
             delta = reward + c.GAMMA * q_next - q
-        # update the weights
-        w_next = w + c.ALPHA * delta * x
-        self.set_weights(w_next)
+        else:
+            delta = reward - q
+
+        # Update the weights
+        self.set_weights(w + c.ALPHA * delta * x)
 
     def get_state_reward_transition(self, state, action, episode):
         """This function computes the next state and the reward for the current state and action.
@@ -350,14 +355,15 @@ class environ(object):
 import matplotlib.pyplot as plt
 import os
 import re
+import cProfile
 
 if __name__ == "__main__":
     # initialize the agent
-    arm = agent()
+    arm = Agent()
     # initialize the environment
     env = environ(arm)
     # set the agent's environment
-    arm.set_env(env)
+    # arm.set_env(env)
     learn = 2
     if learn == 0:
         env.SARSA_learning()
@@ -405,10 +411,15 @@ if __name__ == "__main__":
     t = np.column_stack((t_xx, t_yy))
     # compute the initial arm configuration
     num_episodes = c.NUM_EPISODES if learn == 2 else episode_numbers[-1]
+    # cProfile.run('env.episode_loop(0)', sort='tottime')cProfile.run('env.episode_loop(0)', sort='tottime')
+    #    print('profiling done')
     for episode in range(num_episodes):
         print('\r', f"{episode}", end='', flush=True)
         if learn == 2:
+            # import time
+            # timer = time.time()
             step = env.episode_loop(episode)
+            # print("elapsed time:", time.time() - timer)
             res = env.get_histories()
         pos = res["position"][episode]
         cost = res["cost"][np.nonzero(res["cost"])[0]]
@@ -416,7 +427,7 @@ if __name__ == "__main__":
         # plot the visited q1-q2 pairs - update the plot at every episode
         ax['a'].plot(pos[:, 0], pos[:, 1], "-o", markersize=1)
         # plot the trajectory - update the plot every 10 episodes
-        if episode % 20 == 0 or episode == num_episodes:
+        if episode % 20 == 0 or episode == num_episodes or env.is_done():
             # drop the elements that are zero (not visited)
             index = np.logical_and(pos[:, 0] != 0, pos[:, 1] != 0)
             index[0] = True
