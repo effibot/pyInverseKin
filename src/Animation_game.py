@@ -87,7 +87,7 @@ def render(robot):
 
 import threading
 
-from Environment import environ
+from environment import environ
 
 
 def learn(load_params=False, exploring_start=False):

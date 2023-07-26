@@ -11,7 +11,7 @@ from tqdm import tqdm
 tqdm.monitor_interval = 0
 
 
-class environ(object):
+class Environment(object):
     def __init__(self, agent=None, exploring_start=False):
         self.agent: Agent = agent
         self.target: np.ndarray = np.concatenate((c.TARGET, np.zeros(2)))
@@ -333,20 +333,24 @@ class environ(object):
             print('\r', f"Episode: {episode} started...\t", end='', flush=True)
             steps = self.episode_loop(episode)
             if self.is_done():
-                print(f"Episode {episode} finished in {steps} steps, saving results on disk...", end='')
-                # save the weights and the iht on disk
-                with open(f"data/weights/weights_{episode}.pkl", "wb") as f:
-                    pickle.dump(self.W, f)
-                with open(f"data/iht/iht_{episode}.pkl", "wb") as f:
-                    pickle.dump(self.iht, f)
-                with open(f"data/results/results_{episode}.pkl", "wb") as f:
-                    pickle.dump(self.get_histories(), f)
-                print(f"Done.\n")
+                print(
+                    f"Episode {episode} finished in {steps} steps"
+                    + f" The cumulative reward is {np.sum(self.reward_history[episode]):.4f}"
+                )
             else:
                 print(
                     f"not finished after {steps} steps, increasing penalty."
                     + f" The cumulative reward is {np.sum(self.reward_history[episode]):.4f}"
                 )
+        print("saving results on disk...", end='')
+        # save the weights and the iht on disk
+        with open(f"data/weights/weights_{episode}.pkl", "wb") as f:
+            pickle.dump(self.W, f)
+        # with open(f"data/iht/iht_{episode}.pkl", "wb") as f:
+        #    pickle.dump(self.iht, f)
+        with open(f"data/results/results_{episode}.pkl", "wb") as f:
+            pickle.dump(self.get_histories(), f)
+        print(f"Done.\n")
         print('\n', "Learning finished")
         # save the results on disk
 
@@ -361,10 +365,10 @@ if __name__ == "__main__":
     # initialize the agent
     arm = Agent()
     # initialize the environment
-    env = environ(arm)
+    env = Environment(arm)
     # set the agent's environment
-    # arm.set_env(env)
-    learn = 2
+    arm.set_env(env)
+    learn = 0
     if learn == 0:
         env.SARSA_learning()
     elif learn == 1:
