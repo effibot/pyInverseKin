@@ -14,11 +14,8 @@ from Robot2 import Robot
 
 # CONSTANTS
 running = True
-target = np.array([c.L1 / 3 * 2 + c.L2, 50])
-target_rendered = c._to_zero(v(c.L1 / 3 * 2 + c.L2, 50))
+target_rendered = c._to_zero(v(c.target[0], c.target[1]))
 frame_count = 0
-global best_results
-best_results = {'positions': [], 'actions': [], 'rewards': []}
 
 
 def make_axis(ws, ax=None, **plt_kwargs):
@@ -90,27 +87,35 @@ def render(robot):
 
 import threading
 
-from Environment import Environ
+from environment import environ
 
 
-def learn(load_params=False):
+def learn(load_params=False, exploring_start=False):
+    global arm
     if not load_params:
-        env = Environ(agent(target))
+        arm = agent(c.target, exploring_start)
+        env = environ(arm)
         env.SARSA_learning()
         env.agent.play(env)
-        
     else:
-        with open('weights.pkl', 'rb') as f:
-            with open('iht.pkl', 'rb') as g:
-                agent = agent(target, Environ())
-                agent.load_policy(pickle.load(f), pickle.load(g))
-                agent.play()
+        with open('data/weights.pkl', 'rb') as f:
+            with open('data/iht.pkl', 'rb') as g:
+                print(f"Loading weights and iht from disk")
+                arm = agent(c.target, env=environ(), exploring_start=exploring_start)
+                arm.load_policy(pickle.load(f), pickle.load(g))
+                arm.play()
+    with open('data/best_results.pkl', 'rb') as f:
+        global best_results
+        best_results = pickle.load(f)
 
 
 if __name__ == "__main__":
-    learner = threading.Thread(target=learn, args=(False,))
+    learner = threading.Thread(target=learn, args=(True,))
     learner.start()
     learner.join()
+    fig, ax = arm.create_arm_plot()
+    plt.show(block=False)
+    plt.pause(0.1)
     pygame.init()
     size = c.WIDTH, c.HEIGHT
     flags = pygame.DOUBLEBUF
@@ -118,8 +123,7 @@ if __name__ == "__main__":
     surface = screen.get_rect()
     center = np.array(surface.center)
     clock = pygame.time.Clock()
-    wr = c.WORKING_RANGE
-    arm = Robot(c.NAME, c.L1, c.L2, working_range=wr, center=center)
+    arm = Robot(c.NAME, c.L1, c.L2, center=center)
     n = 100
     ws = arm.generate_ws_curves(n)
     while running:

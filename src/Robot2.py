@@ -4,6 +4,7 @@ import constants as c
 from pygame.math import Vector2 as v
 from pygame.gfxdraw import pixel as draw_pixel
 
+
 class Robot(object):
     def __init__(
         self,
@@ -33,9 +34,7 @@ class Robot(object):
             A tuple containing the angles of the two self.__joints.
         """
         # compute the angle of the second joint and find the two possible solutions
-        c2 = (x**2 + y**2 - self.__L1**2 - self.__L2**2) / (
-            2 * self.__L1 * self.__L2
-        )
+        c2 = (x**2 + y**2 - self.__L1**2 - self.__L2**2) / (2 * self.__L1 * self.__L2)
         # find the two possible solutions for the second joint
         if c2 > 1 or c2 < -1:
             # no feasible solution, fit the elbow to the nearest feasible position
@@ -52,30 +51,35 @@ class Robot(object):
             # if so, q1 is singular and we have infinite^1 solutions
             # in this case use the geometric solution
             q1 = np.clip(
-                np.arctan2(y, x)
-                - np.arctan2(
-                    self.__L2 * np.sin(q2), self.__L1 + self.__L2 * np.cos(q2)
-                ),
+                np.arctan2(y, x) - np.arctan2(self.__L2 * np.sin(q2), self.__L1 + self.__L2 * np.cos(q2)),
                 -np.pi - 1e-6,  # we add a small offset to avoid numerical issues
                 np.pi,
             )
         else:
             # use the algebraic solution - we skip the denominator since it is always positive
-            c1_num = x * (self.__L1 + self.__L2 * np.cos(q2)) + y * self.__L2 * np.sin(
-                q2
-            )
-            s1_num = y * (self.__L1 + self.__L2 * np.cos(q2)) - x * self.__L2 * np.sin(
-                q2
-            )
+            c1_num = x * (self.__L1 + self.__L2 * np.cos(q2)) + y * self.__L2 * np.sin(q2)
+            s1_num = y * (self.__L1 + self.__L2 * np.cos(q2)) - x * self.__L2 * np.sin(q2)
             q1 = np.arctan2(s1_num, c1_num)
         return np.asarray((q1, q2))
+
+    def h_q(self, q1, q2):
+        """Compute the forward kinematics of the robot.
+
+        Args:
+            q1: The angle of the first joint. Rad.
+            q2: The angle of the second joint. Rad.
+
+        Returns:
+            A tuple containing the x and y coordinates of the end effector.
+        """
+        x = c.L1 * np.cos(q1) + c.L2 * np.cos(q1 + q2)
+        y = c.L1 * np.sin(q1) + c.L2 * np.sin(q1 + q2)
+        return np.asarray([x, y])
 
     def _is_inside_ws(self, pose):
         """Check if the given pose is inside the workspace of the robot."""
         x, y = pose
-        return ((x**2 + y**2) < (self.__L1 + self.__L2) ** 2) & (
-            x**2 + y**2 > (self.__L1 - self.__L2) ** 2
-        )
+        return ((x**2 + y**2) < (self.__L1 + self.__L2) ** 2) & (x**2 + y**2 > (self.__L1 - self.__L2) ** 2)
 
     def generate_ws_curves(self, n):
         """
@@ -90,16 +94,12 @@ class Robot(object):
         # define how many points to use to draw the curves. The higher the number, the smoother the curve
         n_points = n
         # define the range of angles to use
-        t1 = np.linspace(
-            self.__working_range[0][0], self.__working_range[0][1], n_points
-        )[:-1]
-        t2 = np.linspace(
-            self.__working_range[1][0], self.__working_range[1][1], n_points
-        )[:-1]
+        t1 = np.linspace(c.WORKING_RANGE[0, 0], c.WORKING_RANGE[0, 1], n_points)[:-1]
+        t2 = np.linspace(c.WORKING_RANGE[1, 0], c.WORKING_RANGE[1, 1], n_points)[:-1]
         # create the grid of points
         grid = np.meshgrid(t1, t2)
         # compute the forward kinematics for each point in the grid
-        X, Y = self.forward_kinematics(grid[0], grid[1])
+        X, Y = self.h_q(grid[0], grid[1])
         # filter out the points that are outside the workspace
         X, Y = X[self._is_inside_ws((X, Y))], Y[self._is_inside_ws((X, Y))]
         # filter out duplicate of pairs of points

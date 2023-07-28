@@ -36,6 +36,7 @@ class IHT:
         self.size = sizeval
         self.overfullCount = 0
         self.dictionary = {}
+        self.cache = {}  # Cache for computed hash values
 
     def __str__(self):
         "Prepares a string for printing whenever this object is printed"
@@ -57,21 +58,32 @@ class IHT:
         return len(self.dictionary) >= self.size
 
     def getindex(self, obj, readonly=False):
+        cached_index = self.cache.get(obj)
+        if cached_index is not None:
+            return cached_index
+
         d = self.dictionary
         if obj in d:
-            return d[obj]
+            index = d[obj]
         elif readonly:
-            return None
-        size = self.size
-        count = self.count()
-        if count >= size:
-            if self.overfullCount == 0:
-                print("IHT full, starting to allow collisions")
-            self.overfullCount += 1
-            return basehash(obj) % self.size
+            index = None
         else:
-            d[obj] = count
-            return count
+            size = self.size
+            count = self.count()
+            if count >= size:
+                if self.overfullCount == 0:
+                    print('IHT full, starting to allow collisions')
+                self.overfullCount += 1
+                index = basehash(obj) % self.size
+            else:
+                d[obj] = count
+                index = count
+
+        self.cache[obj] = index
+        return index
+
+
+# Rest of the code remains the same
 
 
 def hashcoords(coordinates, m, readonly=False):
@@ -79,25 +91,21 @@ def hashcoords(coordinates, m, readonly=False):
         return m.getindex(tuple(coordinates), readonly)
     if type(m) == int:
         return basehash(tuple(coordinates)) % m
-    if m == None:
+    if m is None:
         return coordinates
-
-
-from math import floor, log
-from itertools import zip_longest
 
 
 def tiles(ihtORsize, numtilings, floats, ints=[], readonly=False):
     """returns num-tilings tile indices corresponding to the floats and ints"""
-    qfloats = [floor(f * numtilings) for f in floats]
+    qfloats = [(f * numtilings) // 1 for f in floats]  # Use integer division
     Tiles = []
+    tilingX2 = [tiling * 2 for tiling in range(numtilings)]
     for tiling in range(numtilings):
-        tilingX2 = tiling * 2
         coords = [tiling]
         b = tiling
         for q in qfloats:
-            coords.append((q + b) // numtilings)
-            b += tilingX2
+            coords.append((q + b) // numtilings)  # Use integer division
+            b += tilingX2[tiling]
         coords.extend(ints)
         Tiles.append(hashcoords(coords, ihtORsize, readonly))
     return Tiles
@@ -105,16 +113,19 @@ def tiles(ihtORsize, numtilings, floats, ints=[], readonly=False):
 
 def tileswrap(ihtORsize, numtilings, floats, wrapwidths, ints=[], readonly=False):
     """returns num-tilings tile indices corresponding to the floats and ints, wrapping some floats"""
-    qfloats = [floor(f * numtilings) for f in floats]
+    qfloats = [(f * numtilings) // 1 for f in floats]  # Use integer division
     Tiles = []
+    tilingX2 = [tiling * 2 for tiling in range(numtilings)]
     for tiling in range(numtilings):
-        tilingX2 = tiling * 2
         coords = [tiling]
         b = tiling
-        for q, width in zip_longest(qfloats, wrapwidths):
-            c = (q + b % numtilings) // numtilings
-            coords.append(c % width if width else c)
-            b += tilingX2
+        for q, width in zip(qfloats, wrapwidths):
+            if width:
+                c = (q + b) % numtilings
+                coords.append(c % width)
+            else:
+                coords.append((q + b) // numtilings)  # Use integer division
+            b += tilingX2[tiling]
         coords.extend(ints)
         Tiles.append(hashcoords(coords, ihtORsize, readonly))
     return Tiles
